@@ -13,7 +13,7 @@ The product name is **VeilVia**: [source](https://github.com/jkft007/VeilVia) an
 
 ### Where are the advanced controls?
 
-Press **Advanced user** in the **Simple sending** box directly above the **Hide a secret / Reveal a secret / My keys** tabs on the [live site](https://jkft007.github.io/VeilVia/). It opens the full composer on the same page, including your own passphrase, public-key recipients, extra photo messages, OCR and reveal settings. From any tab, this button takes you to the Hide composer.
+Press **Advanced user** in the **Simple sending** box directly above the app tabs on the [live site](https://jkft007.github.io/VeilVia/). It opens the full composer on the same page, including your own passphrase, public-key recipients, extra photo messages, OCR and reveal settings. From any tab, this button takes you to the Hide composer.
 
 The box then says **Advanced sending** and its button becomes **Simple sending**, which returns to the streamlined composer. Switching modes preserves your text, file, packaging and signing choice. Simple sending ignores advanced recipients, extra messages and custom reveal settings; switching back restores those controls. Fake QR packaging in simple sending uses the recipient passcode to locate its hidden data as well as unlock the generated passphrase's key slot.
 
@@ -25,7 +25,7 @@ The box then says **Advanced sending** and its button becomes **Simple sending**
 
 **Receiving**
 1. Open the link, use the **Reveal secret** button of the Outlook add-in, or use the **Reveal a secret** tab: paste, drop or choose the image, or scan a QR code with the camera. If the secret was split, add every part.
-2. Type the passphrase (or the pass code) and press **Reveal**. If the secret was sent to your public key, the box changes to **Your key's passphrase**: type the passphrase you chose when you made your key (it is not a shared secret). Your key must be saved on this device, or restored first from its backup in the **My keys** tab. Watch the animation (or **Skip**), read the secret, copy it or save the file. It self-destructs after the reading time: when the time is up the revealed text goes up in a puff of smoke on screen and a vortex sucks it away, and the extracted text and any picture are swallowed with it. (**Clear now** clears at once.)
+2. Type the passphrase (or the pass code) and press **Reveal**. If the secret was sent to your public key, the box changes to **Your key's passphrase**: type the passphrase you chose when you made your key (it is not a shared secret). Your key must be saved on this device, or restored first from its backup in the **My keys** tab. Successful reveals automatically open a separate **Read message** tab inside the app, not a new browser tab. Watch the animation (or **Skip**), read the secret, copy it or save the file. Use **Reveal another secret** to return to the image/passcode form; switching tabs does not reset the reading timer. It self-destructs after the reading time: when the time is up the revealed text goes up in a puff of smoke on screen and a vortex sucks it away, and the extracted text and any picture are swallowed with it. (**Clear now** clears at once.)
 
 ## Public keys (no shared passphrase)
 A passphrase has to reach your recipient by some other safe route. Public keys remove that step, and sit alongside the passphrase option rather than replacing it.

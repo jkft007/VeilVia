@@ -32,6 +32,7 @@
       <div class="tabs" role="tablist">
         <button id="tab-hide" role="tab" aria-selected="true" aria-controls="panel-hide">Hide a secret</button>
         <button id="tab-reveal" role="tab" aria-selected="false" aria-controls="panel-reveal">Reveal a secret</button>
+        <button id="tab-read" role="tab" aria-selected="false" aria-controls="panel-read" hidden>Read message</button>
         <button id="tab-keys" role="tab" aria-selected="false" aria-controls="panel-keys">My keys</button>
       </div>
 
@@ -358,6 +359,15 @@
           </select>
         </div>
         <div id="reveal-status" class="status" role="status"></div>
+      </section>
+
+      <section id="panel-read" class="card" role="tabpanel" aria-labelledby="tab-read" hidden>
+        <div class="row">
+          <h2>Read message</h2>
+          <button id="btn-read-another" type="button" class="ghost">Reveal another secret</button>
+        </div>
+        <p id="read-empty" class="hint">No message is open. Reveal an image to read it here.</p>
+        <div id="read-status" class="status" role="status"></div>
         <div id="sender-status" class="warn" role="status" hidden></div>
 
         <div id="stage-wrap" hidden>
@@ -493,7 +503,7 @@
         <p class="hint">For sender identity, save the sender's Ed25519 public key in <b>My keys</b>, compare its displayed words with them through a trusted channel and mark it checked. <b>Require a verified sender</b> rejects unsigned messages and other signing keys before revealing anything. A name or an unknown key's valid signature alone does not establish who sent it.</p>
         <ol>
           <li>Open the link, use the <b>Reveal secret</b> button of the Outlook add-in, or use this page's <b>Reveal a secret</b> tab: paste (Ctrl+V), drop or choose the image, or scan a QR code with the camera. If the secret was split, add every part.</li>
-          <li>Type the passphrase (or the pass code) and press <b>Reveal</b>. If the secret was sent to <i>your public key</i>, the box changes to <b>Your key's passphrase</b>: type the passphrase you chose when you made your key (not a shared secret). Your key has to be saved on this device, or restored first from its backup in the <b>My keys</b> tab. Watch the animation (or press Skip), read the secret, copy it or save the file. It self-destructs after the reading time: when the time is up the revealed text goes up in a puff of smoke on screen and a vortex sucks it away, and the extracted text and any picture are swallowed with it. (Clear now clears at once.)</li>
+          <li>Type the passphrase (or the pass code) and press <b>Reveal</b>. If the secret was sent to <i>your public key</i>, the box changes to <b>Your key's passphrase</b>: type the passphrase you chose when you made your key (not a shared secret). Your key has to be saved on this device, or restored first from its backup in the <b>My keys</b> tab. Successful reveals open a separate <b>Read message</b> tab inside the app, not a new browser tab. Watch the animation (or press Skip), read the secret, copy it or save the file. <b>Reveal another secret</b> returns to the image/passcode form; switching tabs does not reset the reading timer. It self-destructs after the reading time: when the time is up the revealed text goes up in a puff of smoke on screen and a vortex sucks it away, and the extracted text and any picture are swallowed with it. (Clear now clears at once.)</li>
         </ol>
 
         <p><b>Public keys</b></p>

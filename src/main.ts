@@ -48,14 +48,23 @@ $('experience-toggle').onclick = () => {
 };
 
 // ---- tabs -------------------------------------------------------------------
-function showTab(which: 'hide' | 'reveal' | 'keys') {
-  for (const t of ['hide', 'reveal', 'keys'] as const) {
+function showTab(which: 'hide' | 'reveal' | 'read' | 'keys') {
+  if (which === 'read') {
+    $('tab-read').hidden = false;
+    $('tab-read').parentElement!.classList.add('has-reading');
+  }
+  for (const t of ['hide', 'reveal', 'read', 'keys'] as const) {
     $(`tab-${t}`).setAttribute('aria-selected', String(t === which));
     $(`panel-${t}`).hidden = t !== which;
   }
 }
 $('tab-hide').onclick = () => showTab('hide');
 $('tab-reveal').onclick = () => showTab('reveal');
+$('tab-read').onclick = () => showTab('read');
+$('btn-read-another').onclick = () => {
+  showTab('reveal');
+  $<HTMLInputElement>('pass2').focus();
+};
 $('tab-keys').onclick = () => showTab('keys');
 
 // ---- passphrase helpers -----------------------------------------------------
@@ -934,9 +943,9 @@ $('btn-copy-img').onclick = async () => {
   c.getContext('2d')!.drawImage(img, 0, 0);
   try {
     await copyImage(c);
-    setStatus($('reveal-status'), 'Image copied.');
+    setStatus($('read-status'), 'Image copied.');
   } catch (e) {
-    setStatus($('reveal-status'), (e as Error).message, true);
+    setStatus($('read-status'), (e as Error).message, true);
   }
 };
 
@@ -982,13 +991,15 @@ function clearResult() {
   $('read-lock-note').hidden = true;
   $('sender-status').textContent = '';
   $('sender-status').hidden = true;
+  $('read-empty').hidden = false;
+  setStatus($('read-status'), '');
   handle?.skip();
 }
 $('btn-clear').onclick = clearResult;
 $('btn-skip').onclick = () => handle?.skip();
 $('btn-copy-plain').onclick = async () => {
   await navigator.clipboard.writeText($<HTMLTextAreaElement>('plain').value);
-  setStatus($('reveal-status'), 'Text copied.');
+  setStatus($('read-status'), 'Text copied.');
 };
 
 class NoSecretError extends Error {}
@@ -1129,6 +1140,9 @@ $('btn-reveal').onclick = async () => {
     const text = payload.kind === 'text' ? payload.text : `📄 ${payload.name}\n${fmt(payload.data.length)}`;
 
     setStatus(status, '');
+    $('read-empty').hidden = true;
+    showTab('read');
+    $('tab-read').focus();
     $('stage-wrap').hidden = false;
     $<HTMLTextAreaElement>('plain').value = '';
     const source = rgbaToCanvas(images[images.length - 1].rgba);
@@ -1145,7 +1159,7 @@ $('btn-reveal').onclick = async () => {
     showResult(payload);
     $('result').hidden = false;
     if (payload.kind === 'text' && $<HTMLInputElement>('chk-autospeak').checked && localVoices().length) speakSecret();
-    if (payload.expires) setStatus(status, `Note: the sender set this secret to expire on ${new Date(payload.expires * 1000).toLocaleString()}.`);
+    if (payload.expires) setStatus($('read-status'), `Note: the sender set this secret to expire on ${new Date(payload.expires * 1000).toLocaleString()}.`);
 
     // The sender's reading time is a ceiling: the recipient may shorten it but never stretch it.
     const senderLimit = payload.readSecs === undefined ? 60 : payload.readSecs === NEVER_CLEAR ? Infinity : payload.readSecs;
@@ -1165,6 +1179,7 @@ $('btn-reveal').onclick = async () => {
       clearTimer = window.setInterval(tick, 1000);
     }
   } catch (e) {
+    showTab('reveal');
     const countsAsGuess = e instanceof WrongPassphraseError || e instanceof NoSecretError;
     if (e instanceof ExpiredError) recordSuccess(attemptStore, fp); // the passphrase was right, so it is not a guess
     if (e instanceof WrongPassphraseError) {
