@@ -1,12 +1,12 @@
-// Photo hiding with several messages and pass codes in one image.
+// Photo hiding with several messages and passcodes in one image.
 //
 // Each message is hidden in its own lane, scrambled by a key derived from ITS passphrase, so a
 // passphrase finds only its own message. The finder cannot tell how many messages exist.
 //
-// A pass code cannot find a message directly (the message's position comes from its passphrase),
-// so each pass code gets a tiny "locator" record in a small lane of its own, scrambled by a key
-// derived from the pass code. The record holds the message's passphrase, encrypted under a
-// second key from the pass code. Pass code -> locator -> passphrase -> message.
+// A passcode cannot find a message directly (the message's position comes from its passphrase),
+// so each passcode gets a tiny "locator" record in a small lane of its own, scrambled by a key
+// derived from the passcode. The record holds the message's passphrase, encrypted under a
+// second key from the passcode. Passcode -> locator -> passphrase -> message.
 import type { Rgba } from './codeart';
 import { cropTo8, dctCapacity, dctLocatorFits, embedDctEntries, extractDctLane, type DctEntry } from './dct';
 import { layoutKey } from './kdf';
@@ -24,7 +24,7 @@ export function photoLayout(messages: { passcode?: unknown }[]): Layout {
   return { nMsg: Math.max(1, messages.length), nLoc: messages.filter((m) => m.passcode).length };
 }
 
-/** Largest packet one message can carry in this cover with this many messages and pass codes. */
+/** Largest packet one message can carry in this cover with this many messages and passcodes. */
 export function photoCapacity(kind: PhotoKind, cover: Rgba, layout: Layout): number {
   return kind === 'dct' ? dctCapacity(cover, layout) : stegoCapacity(cover, layout);
 }
@@ -35,7 +35,7 @@ async function locatorKey(passcode: string): Promise<CryptoKey> {
 
 async function makeLocator(pass: string, passcode: string): Promise<Uint8Array> {
   const bytes = new TextEncoder().encode(pass);
-  if (bytes.length > MAX_LOCATED_PASS_BYTES) throw new Error(`A passphrase paired with a pass code can be at most ${MAX_LOCATED_PASS_BYTES} bytes long.`);
+  if (bytes.length > MAX_LOCATED_PASS_BYTES) throw new Error(`A passphrase paired with a passcode can be at most ${MAX_LOCATED_PASS_BYTES} bytes long.`);
   const plain = crypto.getRandomValues(new Uint8Array(PLAIN));
   plain[0] = bytes.length;
   plain.set(bytes, 1);
@@ -54,11 +54,11 @@ async function openLocator(record: Uint8Array, passcode: string): Promise<string
   return new TextDecoder().decode(plain.subarray(1, 1 + plain[0]));
 }
 
-/** Hides every message (and a locator for each pass code) in one cover photo. */
+/** Hides every message (and a locator for each passcode) in one cover photo. */
 export async function hidePhoto(kind: PhotoKind, cover: Rgba, messages: PhotoMessage[]): Promise<Rgba> {
   if (messages.length < 1 || messages.length > MAX_MESSAGES) throw new Error(`A photo can hold 1 to ${MAX_MESSAGES} messages.`);
   const keys = messages.flatMap((m) => (m.passcode ? [m.pass, m.passcode] : [m.pass]));
-  if (new Set(keys.map((k) => k.normalize('NFKC'))).size !== keys.length) throw new Error('Every passphrase and pass code in one photo must be different.');
+  if (new Set(keys.map((k) => k.normalize('NFKC'))).size !== keys.length) throw new Error('Every passphrase and passcode in one photo must be different.');
 
   const layout = photoLayout(messages);
   const img = kind === 'dct' ? cropTo8(cover) : cover;
@@ -81,7 +81,7 @@ export async function hidePhoto(kind: PhotoKind, cover: Rgba, messages: PhotoMes
 }
 
 /**
- * Finds the message that `typed` opens: as a passphrase directly, or as a pass code through its
+ * Finds the message that `typed` opens: as a passphrase directly, or as a passcode through its
  * locator. `accept` throws for a record that is not a usable packet. Returns the passphrase that
  * actually opens the packet (the typed text, or the one the locator held).
  */

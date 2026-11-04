@@ -175,7 +175,7 @@ export async function runDemo(d: DemoDeps): Promise<void> {
 
     // 5 ------------------------------------------------------------------------------------------------
     $<HTMLDetailsElement>('more-opts').open = true;
-    say('More options travel inside the encrypted image: the reveal animation your recipient will see, how long they may read it, and when it expires. A recipient pass code is a second way in.', $('more-opts'));
+    say('More options travel inside the encrypted image: the reveal animation your recipient will see, how long they may read it, and when it expires. A recipient passcode is a second way in.', $('more-opts'));
     await wait(3000);
     choose('anim-pick', 'icemelt');
     choose('read-time', '10');

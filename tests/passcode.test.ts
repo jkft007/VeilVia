@@ -4,8 +4,8 @@ import { crc32, HEADER_LEN_V2, MODE_CODEART, MODE_FAKEQR, parsePacket, SLOT_LEN,
 import { decodeFakeQr, encodeFakeQr } from '../src/qrmodes';
 import { assemble, splitPacket } from '../src/split';
 
-describe('recipient pass code (second key slot)', () => {
-  it('opens with the passphrase and with the pass code, and nothing else', async () => {
+describe('recipient passcode (second key slot)', () => {
+  it('opens with the passphrase and with the passcode, and nothing else', async () => {
     const pkt = await sealPayload({ kind: 'text', text: 'two ways in' }, 'the long master passphrase', MODE_CODEART, undefined, 0, 0, 'blue-otter-42');
     const p = parsePacket(pkt);
     expect(pkt[2]).toBe(VERSION_SLOT);
@@ -16,7 +16,7 @@ describe('recipient pass code (second key slot)', () => {
     await expect(openPacket(pkt, 'blue-otter-43')).rejects.toBeInstanceOf(WrongPassphraseError);
   });
 
-  it('adds nothing and stays version 2 when no pass code is given', async () => {
+  it('adds nothing and stays version 2 when no passcode is given', async () => {
     const pkt = await sealText('plain', 'pw', MODE_CODEART);
     expect(pkt[2]).toBe(2);
     expect(parsePacket(pkt).slot).toBeUndefined();
@@ -40,7 +40,7 @@ describe('recipient pass code (second key slot)', () => {
     expect(o.anim).toBe(9);
     expect(o.expires).toBe(exp);
     expect(o.kind === 'file' && [...o.data].join()).toBe('5,4,3,2,1');
-    // and the expiry is enforced for the pass code too
+    // and the expiry is enforced for the passcode too
     await expect(openPayload(pkt, 'recipient code', exp * 1000 + 1)).rejects.toBeInstanceOf(ExpiredError);
   });
 
@@ -64,7 +64,7 @@ describe('recipient pass code (second key slot)', () => {
     expect(o.kind === 'file' && o.data.length).toBe(2500);
   });
 
-  it('refuses a pass code with the old PBKDF2 key derivation', async () => {
+  it('refuses a passcode with the old PBKDF2 key derivation', async () => {
     await expect(sealPayload({ kind: 'text', text: 'x' }, 'pw', MODE_CODEART, { type: 'pbkdf2' }, 0, 0, 'code')).rejects.toThrow(/Argon2id/);
   });
 });

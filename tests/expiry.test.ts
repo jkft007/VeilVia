@@ -16,7 +16,7 @@ describe('reading time stored with the image', () => {
     expect((await openPayload(forever, 'pw', NOW)).readSecs).toBe(NEVER_CLEAR);
   });
 
-  it('works through the pass code and for files, and is absent by default', async () => {
+  it('works through the passcode and for files, and is absent by default', async () => {
     const data = new Uint8Array([1, 2]);
     const pkt = await sealPayload({ kind: 'file', name: 'n.bin', data }, 'master', MODE_CODEART, undefined, 0, 0, 'the code', 30);
     const o = await openPayload(pkt, 'the code', NOW);

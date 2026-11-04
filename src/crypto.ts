@@ -92,7 +92,7 @@ export class ExpiredError extends Error {
  * Encrypts a text or file payload with `passphrase` and returns a framed packet.
  * `anim` (1..255) is the sender's chosen reveal animation and `expiresAt` (Unix seconds, 0 = never) the time
  * after which the reveal step refuses to show it. Both are stored inside the encryption.
- * A non-empty `passcode` adds a second way in: the image key is stored in the image, locked by the pass code.
+ * A non-empty `passcode` adds a second way in: the image key is stored in the image, locked by the passcode.
  */
 export async function sealPayload(
   payload: Payload,
@@ -141,7 +141,7 @@ export async function sealPayload(
     compressed = true;
   }
   if (recipients.length) {
-    if (passcode) throw new Error('A recipient pass code cannot be combined with public keys');
+    if (passcode) throw new Error('A recipient passcode cannot be combined with public keys');
     const packet = await sealRecipients(data, compressed, payload.kind === 'file', hasAnim, hasExpiry, hasRead, mode, passphrase, kdf, recipients, signatureVisibility === 'private' ? signer : undefined);
     return signer && signatureVisibility === 'public' ? signPacket(packet, signer) : packet;
   }
@@ -150,8 +150,8 @@ export async function sealPayload(
   let slot: Uint8Array | undefined;
   let key: CryptoKey;
   if (passcode) {
-    // The image key (made from the passphrase) is also stored in the image, locked by a key made from the pass code.
-    if (kdf.type !== 'argon2id') throw new Error('A pass code needs the Argon2id key derivation');
+    // The image key (made from the passphrase) is also stored in the image, locked by a key made from the passcode.
+    if (kdf.type !== 'argon2id') throw new Error('A passcode needs the Argon2id key derivation');
     const raw = await argon2Bytes(passphrase, salt, kdf.memLog2, kdf.iterations);
     key = await aesKey(raw, ['encrypt', 'decrypt']);
     const saltB = crypto.getRandomValues(new Uint8Array(16));
@@ -276,7 +276,7 @@ export async function openPayload(buf: Uint8Array, passphrase: string, now = Dat
     plain = await decryptWith(key);
   } catch {
     if (!p.slot) throw new WrongPassphraseError();
-    // Not the passphrase: perhaps it is the pass code, which unlocks the image key stored in the slot.
+    // Not the passphrase: perhaps it is the passcode, which unlocks the image key stored in the slot.
     const keyB = await deriveKey(passphrase, p.slot.subarray(0, 16), p.kdf);
     try {
       const raw = new Uint8Array(

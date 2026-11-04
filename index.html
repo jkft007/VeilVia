@@ -74,6 +74,7 @@
             <span class="hint">The picture itself is encrypted, not its text.</span>
           </div>
           <div id="file-info" class="hint"></div>
+          <p class="hint">Image secrets that do not fit are compressed and resized locally before giving up; a notice reports any conversion to JPEG. Quality, transparency, animation and metadata may change. For exact original bytes, choose File and select the file instead of pasting an image.</p>
           <div id="file-warn" class="warn" hidden></div>
         </div>
         <div id="limit-hint" class="hint advanced-only"></div>
@@ -81,7 +82,8 @@
         <div class="simple-only">
           <label for="simple-passcode">Recipient passcode</label>
           <input id="simple-passcode" type="password" autocomplete="off" spellcheck="false" aria-describedby="simple-code-help simple-code-note" />
-          <p id="simple-code-help" class="hint">We generate a strong passphrase automatically. Your passcode lets the recipient unlock the secret without typing it. Use at least five unrelated words, not a short PIN, and share the passcode separately. Protection is only as strong as your passcode.</p>
+          <div id="simple-code-strength" class="meter" role="meter" aria-label="Passcode strength estimate" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="simple-code-meter"></i></div>
+          <p id="simple-code-help" class="hint">Your recipient unlocks the secret with this passcode. Use at least five unrelated words, not a short PIN, and share it separately. Anyone who copies the image can try guesses offline: protection depends on your passcode's strength.</p>
           <div id="simple-code-note" class="hint"></div>
           <label class="check" id="simple-weak-row" hidden><input id="chk-simple-weak-code" type="checkbox" /> Use this short or weak passcode anyway (easier to guess)</label>
         </div>
@@ -160,16 +162,16 @@
           <input id="sign-pass" type="password" autocomplete="off" spellcheck="false" />
           <label for="sign-visibility">Who can see the signing key?</label>
           <select id="sign-visibility" aria-describedby="sign-visibility-help">
-            <option value="public" selected>Anyone who extracts the packet (public signature)</option>
-            <option value="private">Only someone who can decrypt (encrypted signature)</option>
+            <option value="private" selected>Only someone who can decrypt (encrypted signature)</option>
+            <option value="public">Anyone who extracts the packet (public signature)</option>
           </select>
-          <p id="sign-visibility-help" class="hint">Choose an encrypted signature for photos when you want to hide who signed. The signing key and signature stay inside the encryption and are verified before the secret is shown. Anyone with the passphrase, passcode or a recipient private key can see them and could share them.</p>
+          <p id="sign-visibility-help" class="hint">Encrypted signatures are the default: only recipients who can decrypt see your signing key and signature. They are verified before the secret is shown. Recipients could share them. Selecting a public signature exposes your signing key to anyone who extracts the packet.</p>
           <button id="sign-manage" class="ghost small" type="button">Make or manage signing keys</button>
         </details>
 
         <details class="more advanced-only" id="multi" hidden>
           <summary>More messages in this photo <span class="hint" id="multi-summary">(optional)</span></summary>
-          <p class="hint">Hide up to 4 messages in one photo, each with its own passphrase (and optional pass code). Whoever has a passphrase or pass code sees only that message and cannot tell the others exist. Each message gets a share of the photo's room, so a bigger cover photo holds more. Not combined with splitting. The animation, reading time and expiry settings apply to every message.</p>
+          <p class="hint">Hide up to 4 messages in one photo, each with its own passphrase (and optional passcode). Whoever has a passphrase or passcode sees only that message and cannot tell the others exist. Each message gets a share of the photo's room, so a bigger cover photo holds more. Not combined with splitting. The animation, reading time and expiry settings apply to every message.</p>
           <div id="extra-msgs"></div>
           <button id="btn-add-msg" class="ghost small" type="button">Add another message</button>
         </details>
@@ -209,11 +211,11 @@
             </div>
           </div>
           <label class="check" title="Stored inside the encrypted image. The message is shown at once, with no reveal animation."><input id="chk-nonsense" type="checkbox" /> No nonsense: just show the message (no animation)</label>
-          <label for="passcode" title="A second way in: the image key is also stored inside the image, locked by this pass code. Not available for fake QR codes.">Recipient pass code <span class="hint">(optional)</span></label>
+          <label for="passcode" title="A second way in: the image key is also stored inside the image, locked by this passcode. Not available for fake QR codes.">Recipient passcode <span class="hint">(optional)</span></label>
           <input id="passcode" type="password" autocomplete="off" spellcheck="false" />
           <div id="code-note" class="hint"></div>
-          <label class="check" id="weak-code-row" hidden><input id="chk-weak-code" type="checkbox" /> Use this weak pass code anyway</label>
-          <p class="hint">The animation, reading time and expiry are stored inside the encrypted image. The recipient can shorten the reading time unless you lock it. Expiry is a courtesy enforced by this app, not a lock. A pass code is a second way in (the image key is stored in the image, locked by it), so the image is only as strong as the weaker of the passphrase and the pass code. Hover over a setting for details.</p>
+          <label class="check" id="weak-code-row" hidden><input id="chk-weak-code" type="checkbox" /> Use this weak passcode anyway</label>
+          <p class="hint">The animation, reading time and expiry are stored inside the encrypted image. The recipient can shorten the reading time unless you lock it. Expiry is a courtesy enforced by this app, not a lock. A passcode is a second way in (the image key is stored in the image, locked by it), so the image is only as strong as the weaker of the passphrase and the passcode. Hover over a setting for details.</p>
         </details>
 
         <label class="check split advanced-only"><input id="chk-split" type="checkbox" checked /> Split across several images when it does not fit in one</label>
@@ -250,7 +252,7 @@
           <input id="file-in" type="file" accept="image/*,.heic,.heif" multiple hidden />
         </div>
 
-        <label for="pass2" id="pass2-label">Passphrase or pass code</label>
+        <label for="pass2" id="pass2-label">Passphrase or passcode</label>
         <input id="pass2" type="password" autocomplete="off" spellcheck="false" />
         <div id="key-reveal-hint" class="hint" hidden>If the image was sent to your public key, type your key's passphrase here.</div>
         <label for="sender-expected">Require a verified sender <span class="hint">(optional)</span></label>
@@ -482,20 +484,20 @@
 
         <h3>How it works</h3>
         <ol>
-          <li><b>Encrypt.</b> Your browser encrypts the secret (text, a file or a pasted picture) with your passphrase: AES-256-GCM, with a key from Argon2id, which is deliberately slow and memory-hungry so that guessing is expensive. Your choices (reveal animation, reading time, expiry) are sealed inside the same encrypted data. Instead of a shared passphrase it can be locked to one or more <b>public keys</b>: the same random key is wrapped once for each recipient, so only the holder of a matching private key can open it, and the passphrase never has to travel. An optional recipient pass code is a second way in.</li>
+          <li><b>Encrypt.</b> Your browser encrypts the secret (text, a file or a pasted picture) with your passphrase: AES-256-GCM, with a key from Argon2id, which is deliberately slow and memory-hungry so that guessing is expensive. Your choices (reveal animation, reading time, expiry) are sealed inside the same encrypted data. Instead of a shared passphrase it can be locked to one or more <b>public keys</b>: the same random key is wrapped once for each recipient, so only the holder of a matching private key can open it, and the passphrase never has to travel. An optional recipient passcode is a second way in.</li>
           <li><b>Sign (optional).</b> A separate Ed25519 signing key identifies a sender only when you have checked its fingerprint through a trusted channel. Public signatures cover the encrypted packet and expose the signing key to anyone who extracts it (108 bytes extra). Encrypted signatures hide the signing key and signature inside the encryption and bind the payload, settings and recipient slots (97 bytes extra). Choose encrypted signatures for sender privacy in photos. Signatures are always checked before showing any secret; unsigned and unknown senders are labelled.</li>
-          <li><b>Hide.</b> The encrypted bytes are drawn into an image: a code-art mosaic, a tiny colour microdot stamp, a QR code (a phone camera opens this page with the secret ready for the passphrase), a fake QR code (it scans as a harmless decoy while the real data hides in the error-correction budget) or an ordinary-looking photo. Image formats add error correction except microdot, which prioritises the smallest size and needs exact original pixels. One photo can hold up to 4 messages, each with its own passphrase and pass code, and a secret that is too big is split across several images.</li>
+          <li><b>Hide.</b> The encrypted bytes are drawn into an image: a code-art mosaic, a tiny colour microdot stamp, a QR code (a phone camera opens this page with the secret ready for the passphrase), a fake QR code (it scans as a harmless decoy while the real data hides in the error-correction budget) or an ordinary-looking photo. Image formats add error correction except microdot, which prioritises the smallest size and needs exact original pixels. One photo can hold up to 4 messages, each with its own passphrase and passcode, and a secret that is too big is split across several images.</li>
           <li><b>Send.</b> You send the image like any picture: pasted, attached or scanned.</li>
-          <li><b>Reveal.</b> The recipient pastes, drops, picks or scans the image on the Reveal tab and types the passphrase (or pass code), or, for an image sent to their public key, the passphrase of their own key (or a passkey, if they added one). The original comes back with an animation, and clears itself from the screen after the reading time. Nothing is uploaded: there is no server.</li>
+          <li><b>Reveal.</b> The recipient pastes, drops, picks or scans the image on the Reveal tab and types the passphrase (or passcode), or, for an image sent to their public key, the passphrase of their own key (or a passkey, if they added one). The original comes back with an animation, and clears itself from the screen after the reading time. Nothing is uploaded: there is no server.</li>
         </ol>
 
         <h3>How to use</h3>
         <p><b>Simple sending (the default)</b></p>
         <ol>
           <li>On <b>Hide a secret</b>, choose <b>Text</b>, <b>File</b> or <b>Image</b> and add your secret.</li>
-          <li>Enter a <b>Recipient passcode</b>: use at least five unrelated words, not a short PIN. To accept a shorter or weaker code, explicitly tick <b>Use this short or weak passcode anyway</b>; this is off by default. A strong passphrase is generated automatically, but protection is only as strong as your passcode.</li>
+          <li>Enter a <b>Recipient passcode</b>: use the strength meter and aim for at least five unrelated words, not a short PIN. To accept a shorter or weaker code, explicitly tick <b>Use this short or weak passcode anyway</b>; this is off by default. Protection depends on this passcode, and anyone who copies the image can try guesses offline.</li>
           <li>Choose the <b>Packaging</b>: code art, microdot, QR code, fake QR code or hidden in a photo. Photos use the JPEG-safe method and can use your own cover photo. Microdots are tiny colour stamps: send the exact original PNG without resizing, adding a border or changing colours.</li>
-          <li>Optionally open <b>Sign as a sender</b>, choose your Ed25519 signing key and enter its passphrase. Choose <b>Only someone who can decrypt (encrypted signature)</b> to hide your signing key from people who cannot decrypt. Recipients must check your signing fingerprint through a trusted channel; they can disclose the signature afterward.</li>
+          <li>Optionally open <b>Sign as a sender</b>, choose your Ed25519 signing key and enter its passphrase. <b>Only someone who can decrypt (encrypted signature)</b> is the default, hiding your signing key from people who cannot decrypt. Recipients must check your signing fingerprint through a trusted channel; they can disclose the signature afterward. Public signatures require an explicit choice and expose the signing key.</li>
           <li>Press <b>Create image &amp; copy</b>. Paste the image(s) and reveal link into your message, and share the passcode separately. Send every image if the secret was split. If copying is blocked, use <b>Copy message</b> or download the images and send the displayed reveal link.</li>
         </ol>
         <p><b>Advanced sending</b></p>
@@ -504,14 +506,14 @@
           <li>Choose <b>Text</b>, <b>File</b> or <b>Image</b>, add your secret and enter a passphrase, or press <b>Generate</b>. In Text mode you can also read text from a camera photo.</li>
           <li>Pick the <b>Packaging</b>: code art (works almost everywhere), microdot (tiny colour stamp, exact original PNG only), QR code (opens this site when scanned), fake QR code (scans as a decoy) or hidden in a photo (JPEG-safe or lossless). You can choose your own cover photo.</li>
           <li>To authenticate yourself, make an <b>Ed25519 signing key</b> once in <b>My keys</b>, back it up and share its public half. Under <b>Sign as a sender</b>, select that key and enter its passphrase for this creation. The signing passphrase stays with you. Recipients must check your signing fingerprint through a trusted channel.</li>
-          <li>Optionally open <b>More options</b>: a reveal animation (one of 84), a reading time (which you can lock so the recipient cannot change it), an expiry from 1 minute to 30 days, and a recipient pass code. With the photo style you can also add up to 3 more messages to the same photo, each with its own passphrase. Or open <b>Send to a public key instead</b> to lock it to someone's public key, so no passphrase has to be shared (they make a key once under <b>My keys</b> and send you the public half).</li>
+          <li>Optionally open <b>More options</b>: a reveal animation (one of 84), a reading time (which you can lock so the recipient cannot change it), an expiry from 1 minute to 30 days, and a recipient passcode. With the photo style you can also add up to 3 more messages to the same photo, each with its own passphrase. Or open <b>Send to a public key instead</b> to lock it to someone's public key, so no passphrase has to be shared (they make a key once under <b>My keys</b> and send you the public half).</li>
           <li>Press <b>Create image</b>, then <b>Copy message</b> (the image, a link to this site and, for code art and QR, a direct link to the secret) and paste it into an email or chat, or download the image. Give the passphrase to your recipient by a different route.</li>
         </ol>
         <p><b>Receiving</b></p>
         <p class="hint">For sender identity, save the sender's Ed25519 public key in <b>My keys</b>, compare its displayed words with them through a trusted channel and mark it checked. <b>Require a verified sender</b> rejects unsigned messages and other signing keys before revealing anything. A name or an unknown key's valid signature alone does not establish who sent it.</p>
         <ol>
           <li>Open the link, use the <b>Reveal secret</b> button of the Outlook add-in, or use this page's <b>Reveal a secret</b> tab: paste (Ctrl+V), drop or choose the image, or scan a QR code with the camera. If the secret was split, add every part.</li>
-          <li>Type the passphrase (or the pass code) and press <b>Reveal</b>. If the secret was sent to <i>your public key</i>, the box changes to <b>Your key's passphrase</b>: type the passphrase you chose when you made your key (not a shared secret). Your key has to be saved on this device, or restored first from its backup in the <b>My keys</b> tab. Successful reveals open a separate <b>Read message</b> tab inside the app, not a new browser tab. Watch the animation (or press Skip), read the secret, copy it or save the file. <b>Reveal another secret</b> returns to the image/passcode form; switching tabs does not reset the reading timer. It self-destructs after the reading time: when the time is up the revealed text goes up in a puff of smoke on screen and a vortex sucks it away, and the extracted text and any picture are swallowed with it. (Clear now clears at once.)</li>
+          <li>Type the passphrase (or the passcode) and press <b>Reveal</b>. If the secret was sent to <i>your public key</i>, the box changes to <b>Your key's passphrase</b>: type the passphrase you chose when you made your key (not a shared secret). Your key has to be saved on this device, or restored first from its backup in the <b>My keys</b> tab. Successful reveals open a separate <b>Read message</b> tab inside the app, not a new browser tab. Watch the animation (or press Skip), read the secret, copy it or save the file. <b>Reveal another secret</b> returns to the image/passcode form; switching tabs does not reset the reading timer. It self-destructs after the reading time: when the time is up the revealed text goes up in a puff of smoke on screen and a vortex sucks it away, and the extracted text and any picture are swallowed with it. (Clear now clears at once.)</li>
         </ol>
 
         <p class="hint">When animations are enabled, choose another style in <b>Read message</b> and press <b>Reveal again</b> to replay it without unlocking again. You can also toggle <b>Skip animation</b> here. Replaying never restarts the self-destruct timer. These controls are unavailable if the sender chose <b>No nonsense</b> or the message has been cleared.</p>
@@ -537,7 +539,7 @@
           <li>Paste the manifest link above and confirm. If your Outlook does not accept a link, press <b>Download file</b> instead and choose <b>Add from file</b> (browse to the downloaded <code>manifest.xml</code>).</li>
           <li>Open an email that holds a secret image or link and click <b>Reveal secret</b> on its toolbar. Type the passphrase in the pane. Click the pin icon at the top of the pane to keep it open: it then follows you from email to email.</li>
         </ol>
-        <p class="hint">A Microsoft 365 admin can add the same manifest under <b>Integrated apps</b> for a whole team. The pane loads Microsoft's office.js (Outlook needs it); this page loads nothing from third parties. The add-in has been tested with a stand-in for Outlook, not yet inside every real Outlook, and some organisations block custom add-ins.</p>
+        <p class="hint">A Microsoft 365 admin can add the same manifest under <b>Integrated apps</b> for a whole team. The pane loads Microsoft's office.js (Outlook needs it); this page loads nothing from third parties. Compatibility depends on your Outlook client and organisation's policy. Test the add-in in your own Outlook before relying on it; automated integration tests do not guarantee support in every client.</p>
 
         <h3>When to use this</h3>
         <ul>

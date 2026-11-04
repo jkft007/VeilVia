@@ -10,7 +10,7 @@ import { fakeQrCapacity } from './qrmodes';
 import { MAX_PARTS, MODE_CODEART, MODE_DCT, MODE_FAKEQR, MODE_MICRODOT, MODE_QR, MODE_STEGO, PART_OVERHEAD, parseFrame, parsePacket } from './packet';
 import { assemble, splitPacket } from './split';
 import { extract } from './stego';
-import { blobToRgba, copyImage, copyMessage, download, generateCover, rgbaToCanvas } from './imageio';
+import { blobToRgba, compressSecretImage, copyImage, copyMessage, download, generateCover, rgbaToCanvas } from './imageio';
 import { idToStyle, NO_ANIM, styleToId, STYLES } from './reveal-styles';
 import type { RevealHandle } from './reveal-anim';
 import { startScanner, type Scanner } from './camera';
@@ -93,15 +93,21 @@ function updateMeter() {
 }
 $('pass').addEventListener('input', updateMeter);
 $('simple-passcode').addEventListener('input', () => {
-  const { level } = strength($<HTMLInputElement>('simple-passcode').value);
+  const { bits, level } = strength($<HTMLInputElement>('simple-passcode').value);
+  const score = Math.min(100, (bits / 80) * 100);
+  const meter = $('simple-code-meter');
+  meter.style.width = `${score}%`;
+  meter.style.background = level === 'ok' ? 'var(--signal-violet)' : level === 'strong' ? 'var(--verified)' : 'var(--critical)';
+  $('simple-code-strength').setAttribute('aria-valuenow', String(score));
+  $('simple-code-strength').setAttribute('aria-valuetext', level === 'none' ? 'Not entered' : level);
   $('simple-code-note').textContent = level === 'none' ? '' : level === 'weak'
-    ? 'Too easy to guess. Use at least five unrelated words, or explicitly accept the risk below. The generated passphrase cannot make a weak passcode safer.'
+    ? 'Too easy to guess. Use at least five unrelated words, or explicitly accept the risk below. A short passcode can be guessed offline.'
     : level === 'ok' ? 'Acceptable; longer is better.' : 'Strong.';
   $('simple-weak-row').hidden = level !== 'weak';
   if (level !== 'weak') $<HTMLInputElement>('chk-simple-weak-code').checked = false;
 });
 
-// The optional recipient pass code gets the same strength check: it opens the image just like the passphrase does.
+// The optional recipient passcode gets the same strength check: it opens the image just like the passphrase does.
 $('passcode').addEventListener('input', () => {
   const { level } = strength($<HTMLInputElement>('passcode').value);
   $('code-note').textContent =
@@ -122,7 +128,7 @@ function updateOptSummary() {
   if ($<HTMLSelectElement>('read-time').value !== '60') parts.push(`reading ${text('read-time').toLowerCase()}`);
   if ($<HTMLInputElement>('chk-lock-read-time').checked) parts.push('reading time locked');
   if ($<HTMLSelectElement>('expiry').value !== '0') parts.push(`expires ${text('expiry').toLowerCase()}`);
-  if ($<HTMLInputElement>('passcode').value) parts.push('pass code');
+  if ($<HTMLInputElement>('passcode').value) parts.push('passcode');
   $('opt-summary').textContent = parts.length ? `(${parts.join(' · ')})` : '(defaults)';
 }
 for (const id of ['anim-pick', 'read-time', 'expiry', 'passcode', 'chk-lock-read-time']) $(id).addEventListener('input', updateOptSummary);
@@ -244,7 +250,7 @@ function syncKindUi() {
   }
 }
 
-// An image pasted from the clipboard can be the secret itself (its bytes are encrypted as-is).
+// A pasted image can be the secret itself; preserve its bytes unless it needs shrinking to fit.
 let pastedSecret: { name: string; data: Uint8Array } | null = null;
 const IMAGE_EXT: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp' };
 const extForType = (t: string) => ({ 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/bmp': 'bmp', 'image/avif': 'avif', 'image/heic': 'heic' } as Record<string, string>)[t] ?? 'img';
@@ -264,7 +270,7 @@ async function setSecretImage(blob: Blob) {
   pastedSecret = { name: `pasted-image.${extForType(blob.type)}`, data: new Uint8Array(await blob.arrayBuffer()) };
   $<HTMLInputElement>('secret-file').value = '';
   syncFileInfo();
-  setStatus($('hide-status'), 'Image pasted. It will be hidden exactly as it is.');
+  setStatus($('hide-status'), 'Image pasted. Its original bytes will be kept unless it needs compression to fit.');
 }
 
 $('btn-paste-secret').onclick = async () => {
@@ -289,7 +295,7 @@ $('secret-file').addEventListener('change', () => {
 });
 $('photo-kind').addEventListener('change', syncKindUi);
 
-// ---- extra messages in one photo, each with its own passphrase and optional pass code -------
+// ---- extra messages in one photo, each with its own passphrase and optional passcode -------
 type ExtraRow = { text: string; pass: string; passcode: string; weakOk: boolean };
 
 function readExtras(): ExtraRow[] {
@@ -322,9 +328,9 @@ $('btn-add-msg').onclick = () => {
   row.innerHTML =
     '<textarea rows="2" spellcheck="false" placeholder="Another secret message"></textarea>' +
     '<div class="row"><input class="x-pass" type="password" autocomplete="off" spellcheck="false" placeholder="Its own passphrase" />' +
-    '<input class="x-code" type="password" autocomplete="off" spellcheck="false" placeholder="Pass code (optional)" />' +
+    '<input class="x-code" type="password" autocomplete="off" spellcheck="false" placeholder="Passcode (optional)" />' +
     '<button type="button" class="ghost small x-gen">Generate</button><button type="button" class="ghost small x-del">Remove</button></div>' +
-    '<label class="check x-weak-row" hidden><input class="x-weak" type="checkbox" /> Use this weak passphrase or pass code anyway</label>';
+    '<label class="check x-weak-row" hidden><input class="x-weak" type="checkbox" /> Use this weak passphrase or passcode anyway</label>';
   row.querySelector<HTMLButtonElement>('.x-gen')!.onclick = () => {
     const alphabet = 'abcdefghjkmnpqrstuvwxyz23456789';
     const chars = Array.from(crypto.getRandomValues(new Uint8Array(20)), (b) => alphabet[b % alphabet.length]).join('');
@@ -473,7 +479,9 @@ $('btn-create').onclick = async () => {
   const simple = simpleSend();
   const pass = simple ? randomPassphrase() : $<HTMLInputElement>('pass').value;
   const status = $('hide-status');
-  let payload: Payload;
+  let loadPayload: () => Promise<Payload>;
+  let imageSource: Blob | null = null;
+  let imageName = '';
   if (currentKind() !== 'text') {
     const f = $<HTMLInputElement>('secret-file').files?.[0];
     if (!pastedSecret && !f) return setStatus(status, 'Choose the file to hide, or paste an image.', true);
@@ -481,12 +489,18 @@ $('btn-create').onclick = async () => {
       return setStatus(status, 'Choose an image, or select File to hide another kind of file.', true);
     }
     const size = pastedSecret?.data.length ?? f!.size;
-    if (size > MAX_FILE_BYTES) return setStatus(status, `That file is too large (${fmt(size)}). The limit is ${fmt(MAX_FILE_BYTES)}.`, true);
-    payload = pastedSecret ? { kind: 'file', name: pastedSecret.name, data: pastedSecret.data } : { kind: 'file', name: f!.name, data: new Uint8Array(await f!.arrayBuffer()) };
+    const source = pastedSecret ? new Blob([new Uint8Array(pastedSecret.data)], { type: IMAGE_EXT[pastedSecret.name.split('.').pop()!] ?? 'image/png' }) : f!;
+    const name = pastedSecret?.name ?? f!.name;
+    if (currentKind() === 'image' || pastedSecret) {
+      imageSource = source;
+      imageName = name;
+    }
+    if (size > MAX_FILE_BYTES && !imageSource) return setStatus(status, `That file is too large (${fmt(size)}). The limit is ${fmt(MAX_FILE_BYTES)}.`, true);
+    loadPayload = async () => ({ kind: 'file', name, data: new Uint8Array(await source.arrayBuffer()) });
   } else {
     const text = $<HTMLTextAreaElement>('secret').value;
     if (!text) return setStatus(status, 'Enter some text to hide.', true);
-    payload = { kind: 'text', text };
+    loadPayload = async () => ({ kind: 'text', text });
   }
   const recips = simple ? [] : await getRecipients();
   if (!pass && !recips.length) return setStatus(status, 'Enter a passphrase (or press Generate), or add a public key to send to.', true);
@@ -501,20 +515,20 @@ $('btn-create').onclick = async () => {
   }
   if (!simple && passcode && strength(passcode).level === 'weak' && !$<HTMLInputElement>('chk-weak-code').checked) {
     $<HTMLDetailsElement>('more-opts').open = true; // the weak-pass-code tick box lives in there
-    return setStatus(status, 'That pass code is too easy to guess. Make it longer, or tick "Use this weak pass code anyway".', true);
+    return setStatus(status, 'That passcode is too easy to guess. Make it longer, or tick "Use this weak passcode anyway".', true);
   }
 
   // Advanced fake QR uses the main passphrase for positions. Simple sending uses the passcode for positions and its key slot.
   if (!simple && passcode && currentMode() === 'fakeqr') {
     $<HTMLDetailsElement>('more-opts').open = true;
-    return setStatus(status, 'A recipient pass code does not work with fake QR codes, whose data can only be found with the main passphrase. Clear the pass code or choose another style.', true);
+    return setStatus(status, 'A recipient passcode does not work with fake QR codes, whose data can only be found with the main passphrase. Clear the passcode or choose another style.', true);
   }
 
   if (recips.length) {
     const opts = (id: string) => ($<HTMLDetailsElement>(id).open = true);
     if (passcode) {
       opts('more-opts');
-      return setStatus(status, 'A recipient pass code does not combine with public keys. Clear the pass code, or remove the public keys.', true);
+      return setStatus(status, 'A recipient passcode does not combine with public keys. Clear the passcode, or remove the public keys.', true);
     }
     if (currentMode() === 'fakeqr') return setStatus(status, 'Fake QR codes cannot be sent to public keys (their data can only be found with a passphrase). Pick another style.', true);
     if (currentMode() === 'photo' && readExtras().length) {
@@ -523,7 +537,7 @@ $('btn-create').onclick = async () => {
     }
   }
 
-  // Extra messages in the same photo, each with its own passphrase and optional pass code.
+  // Extra messages in the same photo, each with its own passphrase and optional passcode.
   const extraRows = !simple && currentMode() === 'photo' ? readExtras() : [];
   for (const [i, x] of extraRows.entries()) {
     const label = `Extra message ${i + 1}`;
@@ -531,10 +545,10 @@ $('btn-create').onclick = async () => {
       $<HTMLDetailsElement>('multi').open = true;
       return setStatus(status, `${label} needs both its text and its own passphrase (or remove it).`, true);
     }
-    for (const [what, v] of [['passphrase', x.pass], ['pass code', x.passcode]] as const) {
+    for (const [what, v] of [['passphrase', x.pass], ['passcode', x.passcode]] as const) {
       if (v && strength(v).level === 'weak' && !x.weakOk) {
         $<HTMLDetailsElement>('multi').open = true;
-        return setStatus(status, `${label}: that ${what} is too easy to guess. Make it longer, press Generate, or tick "Use this weak passphrase or pass code anyway".`, true);
+        return setStatus(status, `${label}: that ${what} is too easy to guess. Make it longer, press Generate, or tick "Use this weak passphrase or passcode anyway".`, true);
       }
     }
   }
@@ -549,8 +563,16 @@ $('btn-create').onclick = async () => {
   const warn = $('warn');
   warn.hidden = true;
   try {
+    const shrinkImage = async (target: number): Promise<Payload> => {
+      setStatus(status, 'Image is too large. Trying local JPEG compression and resizing…');
+      await sleep(0);
+      const compressed = await compressSecretImage(imageSource!, Math.min(MAX_FILE_BYTES, target));
+      if (!compressed) throw new Error('That image is still too large after compression. Choose a roomier style, enable splitting, or use a smaller image.');
+      return { kind: 'file', name: imageName.replace(/\.[^.]+$/, '') + '.jpg', data: new Uint8Array(await compressed.arrayBuffer()) };
+    };
+    let payload = imageSource && imageSource.size > MAX_FILE_BYTES ? await shrinkImage(MAX_FILE_BYTES) : await loadPayload();
     const signer = await getSigner();
-    const signatureVisibility = $<HTMLSelectElement>('sign-visibility').value === 'private' ? 'private' : 'public';
+    const signatureVisibility = $<HTMLSelectElement>('sign-visibility').value === 'public' ? 'public' : 'private';
     const mode = currentMode();
     const kind = simple ? 'dct' : photoKind();
     const packetMode = { codeart: MODE_CODEART, qr: MODE_QR, fakeqr: MODE_FAKEQR, microdot: MODE_MICRODOT, photo: kind === 'dct' ? MODE_DCT : MODE_STEGO }[mode];
@@ -565,17 +587,20 @@ $('btn-create').onclick = async () => {
     // by a key the recipient can work out for themselves.
     let photoLead: PhotoMessage[] | undefined;
     pkPhotoCount = 0;
-    if (recips.length && mode === 'photo') {
-      photoLead = [];
-      for (const r of recips) photoLead.push({ pass: photoPassFor(r), packet: await sealPayload(payload, '', packetMode, undefined, anim, expiresAt, '', readSecs, [r], readLocked, signer, signatureVisibility) });
-      if (pass) photoLead.push({ pass, packet: await sealPayload(payload, pass, packetMode, undefined, anim, expiresAt, '', readSecs, [], readLocked, signer, signatureVisibility) });
-      if (photoLead.length > MAX_MESSAGES) throw new Error(`A photo can hold ${MAX_MESSAGES} ways in. Choose fewer recipients, or leave out the passphrase.`);
-      pkPhotoCount = photoLead.length;
-    }
-    // Photo images find a pass code through a locator record, so their packets carry no key slot.
-    const packet = photoLead
-      ? photoLead[0].packet
-      : await sealPayload(payload, pass, packetMode, undefined, anim, expiresAt, mode === 'photo' ? '' : passcode, readSecs, recips, readLocked, signer, signatureVisibility);
+    const encryptPayload = async () => {
+      if (recips.length && mode === 'photo') {
+        photoLead = [];
+        for (const r of recips) photoLead.push({ pass: photoPassFor(r), packet: await sealPayload(payload, '', packetMode, undefined, anim, expiresAt, '', readSecs, [r], readLocked, signer, signatureVisibility) });
+        if (pass) photoLead.push({ pass, packet: await sealPayload(payload, pass, packetMode, undefined, anim, expiresAt, '', readSecs, [], readLocked, signer, signatureVisibility) });
+        if (photoLead.length > MAX_MESSAGES) throw new Error(`A photo can hold ${MAX_MESSAGES} ways in. Choose fewer recipients, or leave out the passphrase.`);
+        pkPhotoCount = photoLead.length;
+      }
+      // Photo images find a passcode through a locator record, so their packets carry no key slot.
+      return photoLead
+        ? photoLead[0].packet
+        : sealPayload(payload, pass, packetMode, undefined, anim, expiresAt, mode === 'photo' ? '' : passcode, readSecs, recips, readLocked, signer, signatureVisibility);
+    };
+    let packet = await encryptPayload();
     const extras: PhotoMessage[] = [];
     for (const x of extraRows) {
       extras.push({ pass: x.pass, passcode: x.passcode, packet: await sealPayload({ kind: 'text', text: x.text }, x.pass, packetMode, undefined, anim, expiresAt, '', readSecs, [], readLocked, signer, signatureVisibility) });
@@ -591,6 +616,15 @@ $('btn-create').onclick = async () => {
     }
     const maxFrame = frameCapacity(cover ?? undefined);
     const split = (simple || $<HTMLInputElement>('chk-split').checked) && extras.length === 0 && !photoLead;
+    const maxPacket = split ? (maxFrame - PART_OVERHEAD) * MAX_PARTS : maxFrame;
+    const largestPacket = () => Math.max(packet.length, ...(photoLead ?? []).map((p) => p.packet.length));
+    let target = maxPacket;
+    for (let attempt = 0; imageSource && payload.kind === 'file' && largestPacket() > maxPacket && attempt < 2; attempt++) {
+      if (attempt === 0) target = Math.min(payload.data.length, maxPacket) - Math.max(0, largestPacket() - payload.data.length) - 128;
+      else target -= largestPacket() - maxPacket + 128;
+      payload = await shrinkImage(target);
+      packet = await encryptPayload();
+    }
     if (!split && [packet, ...extras.map((x) => x.packet), ...(photoLead ?? []).map((x) => x.packet)].some((p) => p.length > maxFrame)) {
       throw new Error(`Too much data for one image (about ${fmt(Math.max(0, maxFrame - FRAMING))} is the most for this style). Turn on splitting, pick a roomier style, or hide less.`);
     }
@@ -604,6 +638,9 @@ $('btn-create').onclick = async () => {
     }
 
     const notes: string[] = [];
+    if (imageSource && payload.kind === 'file' && payload.data.length < imageSource.size) {
+      notes.push(`Image compressed locally from ${fmt(imageSource.size)} to ${fmt(payload.data.length)} as ${payload.name}. JPEG compression may reduce quality, flatten transparency or animation, and remove metadata. Your original image is unchanged. Choose File instead of Image to require exact original bytes.`);
+    }
     notes.push(signer ? 'Signed with your Ed25519 key. Recipients must check your signing fingerprint through a trusted channel to identify you.' : 'Unsigned: encryption does not prove who sent this message. Choose a signing key under "Sign as a sender" to authenticate it.');
     if (signer) notes.push(signatureVisibility === 'private'
       ? 'Encrypted signature: only someone who can decrypt sees your signing key and signature. They could disclose them to others.'
@@ -747,7 +784,7 @@ async function updateRevealLabel() {
     hint.textContent = `This image was sent to a public key. Type the passphrase of your key, the one you chose when you made it (not a shared secret).${alsoPass ? " If the sender also gave you a passphrase, that works too." : ''}`;
     hint.hidden = false;
   } else {
-    $('pass2-label').textContent = 'Passphrase or pass code';
+    $('pass2-label').textContent = 'Passphrase or passcode';
     hint.textContent = "If the image was sent to your public key, type your key's passphrase here.";
     hint.hidden = !hasStoredKeys();
   }
@@ -1058,7 +1095,7 @@ function showLockout(ms: number) {
   lockTimer = window.setInterval(tick, 1000);
 }
 
-/** `pass` in the result is the passphrase that opens the packet: a photo's pass code resolves to the passphrase behind it. */
+/** `pass` in the result is the passphrase that opens the packet: a photo's passcode resolves to the passphrase behind it. */
 async function decodeImage(img: Rgba, pass: string, pkPasses: string[] = []): Promise<{ frame: Uint8Array; mode: 'codeart' | 'stego'; pass: string } | null> {
   const attempts: [() => Promise<Uint8Array | { frame: Uint8Array; pass: string }> | Uint8Array, 'codeart' | 'stego'][] = [
     [() => decodeMicrodot(img), 'codeart'],

@@ -75,9 +75,9 @@ describe.each(types)('public-key packets (%s)', (type) => {
     await expect(openPayload(sneaky, '', Date.now(), [bob.id])).rejects.toBeInstanceOf(WrongPassphraseError);
   });
 
-  it('can address a packet to one recipient and still hold a passphrase pass without a recipient pass code', async () => {
+  it('can address a packet to one recipient and still hold a passphrase pass without a recipient passcode', async () => {
     const bob = await person(type);
-    await expect(sealPayload(text('x'), '', MODE_CODEART, undefined, 0, 0, 'a pass code', 0, [bob.pub])).rejects.toThrow(/pass code/);
+    await expect(sealPayload(text('x'), '', MODE_CODEART, undefined, 0, 0, 'a passcode', 0, [bob.pub])).rejects.toThrow(/passcode/);
   });
 });
 

@@ -40,6 +40,26 @@ export function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error('Could not encode PNG'))), 'image/png'));
 }
 
+/** Lossy fallback for image secrets, never for encoded carrier images or ordinary files. */
+export async function compressSecretImage(blob: Blob, maxBytes: number): Promise<Blob | null> {
+  if (maxBytes <= 0) return null;
+  const rgba = await blobToRgba(blob, 2048);
+  const source = rgbaToCanvas(rgba);
+  const canvas = document.createElement('canvas');
+  for (let side = Math.max(rgba.width, rgba.height); side >= 1; side = Math.floor(side * 0.7)) {
+    const scale = side / Math.max(rgba.width, rgba.height);
+    canvas.width = Math.max(1, Math.round(rgba.width * scale));
+    canvas.height = Math.max(1, Math.round(rgba.height * scale));
+    canvas.getContext('2d')!.drawImage(source, 0, 0, canvas.width, canvas.height);
+    for (const quality of [0.85, 0.6, 0.4]) {
+      const encoded = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+      if (!encoded || encoded.type !== 'image/jpeg') return null;
+      if (encoded.size <= maxBytes && encoded.size < blob.size) return encoded;
+    }
+  }
+  return null;
+}
+
 export async function copyImage(canvas: HTMLCanvasElement): Promise<void> {
   if (!navigator.clipboard || typeof ClipboardItem === 'undefined') {
     throw new Error('Copying images needs https or localhost. Use Download instead.');

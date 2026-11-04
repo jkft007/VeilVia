@@ -3,7 +3,7 @@
 //   - message lanes: slot s belongs to message lane (s mod nMsg) of the head region, so each
 //     message gets an equal share;
 //   - locator lanes: small fixed-size blocks at the tail, each holding a tiny record that
-//     leads from a pass code to a passphrase (see photo.ts).
+//     leads from a passcode to a passphrase (see photo.ts).
 // Inside a lane the slots are visited in an order scrambled by a key (an affine permutation),
 // so a record can only be found by someone holding its key. A decoder does not know how many
 // messages the image holds, so it tries every layout (at most 20) with the key it was given.

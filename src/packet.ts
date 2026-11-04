@@ -1,9 +1,9 @@
 // Binary framing, version 2 (current):
 // 'S' 'T' | 2 | mode(1) | kdf(1) | memLog2(1) | iterations(1) | salt(16) | iv(12) | ctLen(4, BE) | ciphertext+tag | crc32(4, BE)
-// Version 3 (an image that a second "pass code" can also open): the version 2 header followed by one key slot,
+// Version 3 (an image that a second "passcode" can also open): the version 2 header followed by one key slot,
 //   slot = salt(16) | iv(12) | wrapped key(32 + 16 tag)   (76 bytes)
-// The slot holds the image's encryption key, locked by a key derived from the pass code, so either the passphrase
-// or the pass code opens it. The slot is part of the authenticated header.
+// The slot holds the image's encryption key, locked by a key derived from the passcode, so either the passphrase
+// or the passcode opens it. The slot is part of the authenticated header.
 // Version 4 (an image addressed to public keys, and/or a passphrase, through a table of slots):
 //   'S' 'T' | 4 | mode flags(1) | slotCount(1) | iv(12) | ctLen(4, BE) | slot... | ciphertext+tag | crc32(4, BE)
 //   slot = type(1) + body: 1 = passphrase: memLog2(1) iterations(1) salt(16) iv(12) wrapped key(48)        (78 bytes)
@@ -126,7 +126,7 @@ export function buildHeader(
   const flags =
     mode | (compressed ? FLAG_COMPRESSED : 0) | (isFile ? FLAG_FILE : 0) | (hasAnim ? FLAG_ANIM : 0) | (hasExpiry ? FLAG_EXPIRY : 0) | (hasRead ? FLAG_READ : 0);
   const argon = kdf.type === 'argon2id';
-  if (slot && (!argon || slot.length !== SLOT_LEN)) throw new PacketError('a pass code needs Argon2id and a full key slot');
+  if (slot && (!argon || slot.length !== SLOT_LEN)) throw new PacketError('a passcode needs Argon2id and a full key slot');
   const fixed = argon ? HEADER_LEN_V2 : HEADER_LEN;
   const h = new Uint8Array(fixed + (slot ? SLOT_LEN : 0));
   h[0] = 0x53;

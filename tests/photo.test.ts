@@ -54,7 +54,7 @@ for (const kind of ['dct', 'lsb'] as PhotoKind[]) {
   const img = () => (kind === 'dct' ? cover(640, 480) : cover(220, 160));
 
   describe(`photo with several records (${kind})`, () => {
-    it('one message with no pass code is read exactly as before', async () => {
+    it('one message with no passcode is read exactly as before', async () => {
       const packet = await seal('only one', A, kind);
       const old = kind === 'dct' ? await embedDct(img(), packet, A) : await embed(img(), packet, A);
       expect(await reveal(kind, old, A)).toBe('only one');
@@ -63,7 +63,7 @@ for (const kind of ['dct', 'lsb'] as PhotoKind[]) {
       await expect(findPhoto(kind, old, 'wrong passphrase 123', ok)).rejects.toThrow();
     });
 
-    it('a pass code finds the message through its locator, and the passphrase still works', async () => {
+    it('a passcode finds the message through its locator, and the passphrase still works', async () => {
       const packet = await seal('via code', A, kind);
       const out = await hidePhoto(kind, img(), [{ pass: A, passcode: 'orange 77 kettle', packet }]);
       expect(await reveal(kind, out, 'orange 77 kettle')).toBe('via code');
@@ -71,7 +71,7 @@ for (const kind of ['dct', 'lsb'] as PhotoKind[]) {
       await expect(findPhoto(kind, out, 'orange 77 kettlf', ok)).rejects.toThrow();
     });
 
-    it('several messages: each passphrase or pass code shows only its own', async () => {
+    it('several messages: each passphrase or passcode shows only its own', async () => {
       const msgs = [
         { pass: A, packet: await seal('first secret', A, kind) },
         { pass: B, passcode: 'bravo code 12345', packet: await seal('second secret', B, kind) },
@@ -93,7 +93,7 @@ for (const kind of ['dct', 'lsb'] as PhotoKind[]) {
       for (let i = 0; i < 4; i++) expect(await reveal(kind, out, passes[i])).toBe(`m${i}`);
     });
 
-    it('refuses repeated keys, an overlong passphrase with a pass code, and too many or too big messages', async () => {
+    it('refuses repeated keys, an overlong passphrase with a passcode, and too many or too big messages', async () => {
       const p1 = await seal('x', A, kind);
       const p2 = await seal('y', B, kind);
       await expect(hidePhoto(kind, img(), [{ pass: A, packet: p1 }, { pass: A, packet: p2 }])).rejects.toThrow(/different/);
@@ -105,7 +105,7 @@ for (const kind of ['dct', 'lsb'] as PhotoKind[]) {
       await expect(hidePhoto(kind, img(), [{ pass: A, packet: big }, { pass: B, packet: p2 }])).rejects.toThrow(/Too much data/);
     });
 
-    it('more messages and pass codes leave each message less room', () => {
+    it('more messages and passcodes leave each message less room', () => {
       const one = photoCapacity(kind, img(), photoLayout([{}]));
       const two = photoCapacity(kind, img(), photoLayout([{}, {}]));
       const twoCoded = photoCapacity(kind, img(), photoLayout([{ passcode: 'a' }, { passcode: 'b' }]));
@@ -116,7 +116,7 @@ for (const kind of ['dct', 'lsb'] as PhotoKind[]) {
 }
 
 describe('photo with several records survives JPEG (dct)', () => {
-  it('two messages and a pass code after quality 70 and 50 recompression', async () => {
+  it('two messages and a passcode after quality 70 and 50 recompression', async () => {
     const msgs = [
       { pass: A, packet: await seal('first secret', A, 'dct') },
       { pass: B, passcode: 'bravo code 12345', packet: await seal('second secret', B, 'dct') },

@@ -1,10 +1,47 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { openPacket, openPayload, safeFileName, sealPayload, sealText, WrongPassphraseError } from '../src/crypto';
 import { decodeCodeArt, encodeCodeArt, type Rgba } from '../src/codeart';
 import { embed, extract, stegoCapacity } from '../src/stego';
 import { embedDct, extractDct } from '../src/dct';
 import { decodeFakeQr, encodeFakeQr } from '../src/qrmodes';
 import { crc32, MODE_CODEART, MODE_DCT, MODE_FAKEQR, MODE_STEGO, parsePacket } from '../src/packet';
+import { compressSecretImage } from '../src/imageio';
+
+describe('image compression fallback', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const mockImages = () => {
+    vi.stubGlobal('createImageBitmap', async () => ({ width: 100, height: 50, close() {} }));
+    vi.stubGlobal('ImageData', class {});
+    vi.stubGlobal('document', {
+      createElement: () => ({
+        width: 0, height: 0,
+        getContext: () => ({
+          fillRect() {}, drawImage() {}, putImageData() {},
+          getImageData: (_x: number, _y: number, w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }),
+        }),
+        toBlob(callback: (blob: Blob) => void, type: string, quality: number) {
+          callback(new Blob([new Uint8Array(600 + Math.ceil(this.width * this.height * quality))], { type }));
+        },
+      }),
+    });
+  };
+  it('reduces quality and dimensions until the image meets its byte budget', async () => {
+    mockImages();
+    const original = new Blob([new Uint8Array(6000)], { type: 'image/png' });
+    const compressed = await compressSecretImage(original, 1200);
+    expect(compressed?.type).toBe('image/jpeg');
+    expect(compressed!.size).toBeLessThanOrEqual(1200);
+    expect(original.size).toBe(6000);
+  });
+  it('reports an impossible budget instead of returning an oversized image', async () => {
+    mockImages();
+    expect(await compressSecretImage(new Blob([new Uint8Array(6000)]), 100)).toBeNull();
+  });
+  it('never replaces an image with a larger encoded file', async () => {
+    mockImages();
+    expect(await compressSecretImage(new Blob([new Uint8Array(100)]), 2000)).toBeNull();
+  });
+});
 
 const bytes = (n: number, seed = 1) => {
   const out = new Uint8Array(n);
