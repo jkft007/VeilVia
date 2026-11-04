@@ -3,13 +3,16 @@ import { fingerprintWords, type Identity, type PublicKey } from './pubkey';
 
 const bs = (u: Uint8Array) => u as unknown as BufferSource;
 const DOMAIN = new TextEncoder().encode('VeilVia sender signature v1\0');
+const PRIVATE_DOMAIN = new TextEncoder().encode('VeilVia private sender signature v1\0');
+export const PRIVATE_SIGNATURE_LEN = 32 + SIGNATURE_LEN;
+export type SignatureVisibility = 'public' | 'private';
 
 export class SignatureError extends Error {}
 
-function signingData(data: Uint8Array): Uint8Array {
-  const out = new Uint8Array(DOMAIN.length + data.length);
-  out.set(DOMAIN);
-  out.set(data, DOMAIN.length);
+function signingData(data: Uint8Array, domain: Uint8Array = DOMAIN): Uint8Array {
+  const out = new Uint8Array(domain.length + data.length);
+  out.set(domain);
+  out.set(data, domain.length);
   return out;
 }
 
@@ -20,7 +23,8 @@ export function samePublicKey(a: PublicKey, b: PublicKey): boolean {
 /** Signs the complete encrypted packet, including its recipients and all authenticated settings. */
 export async function signPacket(packet: Uint8Array, signer: Identity): Promise<Uint8Array> {
   if (signer.type !== 'ed25519' || signer.raw.length !== 32) throw new SignatureError('Choose an Ed25519 signing key.');
-  if (parsePacket(packet).signature) throw new SignatureError('This packet is already signed.');
+  const parsed = parsePacket(packet);
+  if (parsed.signature || parsed.privateSignature) throw new SignatureError('This packet is already signed.');
   const end = SIGNED_HEADER_LEN + packet.length;
   const out = new Uint8Array(end + SIGNATURE_LEN + 4);
   out.set([0x53, 0x54, VERSION_SIGNED, packet[3]]);
@@ -36,6 +40,10 @@ export async function signPacket(packet: Uint8Array, signer: Identity): Promise<
 
 /** A valid signature establishes control of a key, not the identity of the person who owns it. */
 export async function verifyPacketSignature(signature: ReturnType<typeof parsePacket>['signature'], expected?: PublicKey): Promise<PublicKey | undefined> {
+  return verifySignature(signature, expected, DOMAIN);
+}
+
+async function verifySignature(signature: ReturnType<typeof parsePacket>['signature'], expected: PublicKey | undefined, domain: Uint8Array): Promise<PublicKey | undefined> {
   if (!signature) {
     if (expected) throw new SignatureError('Unsigned message: the required sender signature is missing. Nothing was revealed.');
     return undefined;
@@ -43,7 +51,7 @@ export async function verifyPacketSignature(signature: ReturnType<typeof parsePa
   const sender: PublicKey = { type: 'ed25519', raw: signature.publicKey };
   try {
     const key = await crypto.subtle.importKey('raw', bs(sender.raw), 'Ed25519', false, ['verify']);
-    if (!(await crypto.subtle.verify('Ed25519', key, bs(signature.value), bs(signingData(signature.data))))) {
+    if (!(await crypto.subtle.verify('Ed25519', key, bs(signature.value), bs(signingData(signature.data, domain))))) {
       throw new SignatureError('Invalid sender signature. The message may be forged or damaged. Nothing was revealed.');
     }
   } catch (e) {
@@ -52,6 +60,36 @@ export async function verifyPacketSignature(signature: ReturnType<typeof parsePa
   }
   if (expected && !samePublicKey(sender, expected)) throw new SignatureError('This message is not signed by the required sender. Nothing was revealed.');
   return sender;
+}
+
+function privateSigningData(header: Uint8Array, publicKey: Uint8Array, data: Uint8Array): Uint8Array {
+  const out = new Uint8Array(header.length + publicKey.length + data.length);
+  out.set(header);
+  out.set(publicKey, header.length);
+  out.set(data, header.length + publicKey.length);
+  return out;
+}
+
+/** This envelope is encrypted in full; its signature also binds the encryption header and recipient slots. */
+export async function signPrivatePayload(data: Uint8Array, header: Uint8Array, signer: Identity): Promise<Uint8Array> {
+  if (signer.type !== 'ed25519' || signer.raw.length !== 32) throw new SignatureError('Choose an Ed25519 signing key.');
+  const value = new Uint8Array(await crypto.subtle.sign('Ed25519', signer.priv, bs(signingData(privateSigningData(header, signer.raw, data), PRIVATE_DOMAIN))));
+  const out = new Uint8Array(PRIVATE_SIGNATURE_LEN + data.length);
+  out.set(signer.raw);
+  out.set(value, 32);
+  out.set(data, PRIVATE_SIGNATURE_LEN);
+  await verifyPrivatePayload(out, header);
+  return out;
+}
+
+export async function verifyPrivatePayload(plain: Uint8Array, header: Uint8Array, expected?: PublicKey): Promise<{ data: Uint8Array; sender: PublicKey }> {
+  if (plain.length < PRIVATE_SIGNATURE_LEN) throw new SignatureError('Damaged private sender signature. Nothing was revealed.');
+  const publicKey = plain.slice(0, 32);
+  const data = plain.subarray(PRIVATE_SIGNATURE_LEN);
+  const sender = await verifySignature({
+    publicKey, value: plain.subarray(32, PRIVATE_SIGNATURE_LEN), data: privateSigningData(header, publicKey, data),
+  }, expected, PRIVATE_DOMAIN);
+  return { data, sender: sender! };
 }
 
 export interface SigningContact {

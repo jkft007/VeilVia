@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { decodeCodeArt, encodeCodeArt, type Rgba } from '../src/codeart';
-import { openPayload, sealPayload } from '../src/crypto';
-import { MODE_CODEART, MODE_DCT, MODE_FAKEQR, MODE_QR, MODE_STEGO, PacketError, SIGNED_HEADER_LEN, crc32, parseFrame, parsePacket } from '../src/packet';
+import { ExpiredError, openPayload, sealPayload, WrongPassphraseError } from '../src/crypto';
+import { argon2Bytes } from '../src/kdf';
+import { MODE_CODEART, MODE_DCT, MODE_FAKEQR, MODE_QR, MODE_STEGO, PacketError, SIGNED_HEADER_LEN, crc32, finishPacket, parseFrame, parsePacket } from '../src/packet';
 import { findPhoto, hidePhoto } from '../src/photo';
 import { canUse, decodePublicKey, encodePublicKey, generateKeyPair, importIdentity, publicKeyLink, type KeyType } from '../src/pubkey';
 import { decodeFakeQr, decodePlainQr, encodeFakeQr, encodePlainQr } from '../src/qrmodes';
@@ -27,6 +28,93 @@ describe('Ed25519 sender signatures', () => {
     expect(parsePacket(packet).version).toBe(5);
     expect(parseFrame(packet).kind).toBe('packet');
     expect(await openPayload(packet, '', Date.now(), [bob], alice)).toMatchObject({ ...text, sender: { type: 'ed25519', raw: alice.raw } });
+  });
+
+  describe('encrypted Ed25519 sender signatures', () => {
+    it.each<KeyType>(['x25519', 'p256'])('hides the sender until an authorized %s recipient or passphrase holder decrypts', async (type) => {
+      const alice = await signer();
+      const bobKey = await generateKeyPair(type);
+      const bob = await importIdentity(type, bobKey.raw, bobKey.pkcs8);
+      const packet = await sealPayload(text, pass, MODE_CODEART, undefined, 0, 0, '', 0, [bob], false, alice, 'private');
+      expect(parsePacket(packet)).toMatchObject({ version: 6, privateSignature: true });
+      expect(parsePacket(packet).signature).toBeUndefined();
+      expect(Buffer.from(packet).includes(Buffer.from(alice.raw))).toBe(false);
+      expect(await openPayload(packet, '', Date.now(), [bob], alice)).toMatchObject({ ...text, sender: { type: 'ed25519', raw: alice.raw } });
+      expect(await openPayload(packet, pass, Date.now(), [], alice)).toMatchObject(text);
+      await expect(openPayload(packet, 'wrong passphrase')).rejects.toBeInstanceOf(WrongPassphraseError);
+    });
+
+    it.each(['pbkdf2', 'argon2id', 'passcode'])('preserves private signed files, compression and settings with %s encryption', async (kind) => {
+      const alice = await signer();
+      const payload = { kind: 'file', name: 'private.txt', data: new TextEncoder().encode('private file contents '.repeat(60)) } as const;
+      const expiry = Math.floor(Date.now() / 1000) + 600;
+      const code = kind === 'passcode' ? 'recipient code 882' : '';
+      const packet = await sealPayload(payload, pass, MODE_CODEART, kind === 'pbkdf2' ? { type: 'pbkdf2' } : undefined, 9, expiry, code, 30, [], true, alice, 'private');
+      expect(parsePacket(packet).compressed).toBe(true);
+      expect(Buffer.from(packet).includes(Buffer.from(alice.raw))).toBe(false);
+      for (const pw of code ? [pass, code] : [pass]) {
+        expect(await openPayload(packet, pw, Date.now(), [], alice)).toMatchObject({ ...payload, anim: 9, expires: expiry, readSecs: 30, readLocked: true, sender: { raw: alice.raw } });
+      }
+      await expect(openPayload(packet, pass, expiry * 1000 + 1, [], alice)).rejects.toBeInstanceOf(ExpiredError);
+    });
+
+    it('rejects forged identities, unsigned replacements and invalid signing key pairs', async () => {
+      const alice = await signer();
+      const eve = await signer();
+      const forged = await sealPayload(text, pass, MODE_CODEART, undefined, 0, 1, '', 0, [], false, eve, 'private');
+      await expect(openPayload(forged, pass, Date.now(), [], alice)).rejects.toThrow(/required sender/);
+      const unsigned = await sealPayload(text, pass, MODE_CODEART);
+      await expect(openPayload(unsigned, pass, Date.now(), [], alice)).rejects.toThrow(/Unsigned message/);
+      await expect(sealPayload(text, pass, MODE_CODEART, undefined, 0, 0, '', 0, [], false, { ...alice, raw: eve.raw }, 'private')).rejects.toBeInstanceOf(SignatureError);
+      const encryptionKey = await generateKeyPair('x25519');
+      const encryptionIdentity = await importIdentity(encryptionKey.type, encryptionKey.raw, encryptionKey.pkcs8);
+      await expect(sealPayload(text, pass, MODE_CODEART, undefined, 0, 0, '', 0, [], false, encryptionIdentity, 'private')).rejects.toThrow(/Ed25519/);
+    });
+
+    it('rejects changes made by a passphrase holder even if they recompute valid encryption and checksums', async () => {
+      const alice = await signer();
+      const eve = await signer();
+      const packet = await sealPayload(text, pass, MODE_CODEART, undefined, 9, 0, '', 30, [], true, alice, 'private');
+      const p = parsePacket(packet);
+      if (p.kdf.type !== 'argon2id') throw new Error('expected Argon2id');
+      const raw = await argon2Bytes(pass, p.salt, p.kdf.memLog2, p.kdf.iterations);
+      const key = await crypto.subtle.importKey('raw', raw as BufferSource, 'AES-GCM', false, ['encrypt', 'decrypt']);
+      const plain = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: p.iv as BufferSource, additionalData: p.header as BufferSource }, key, p.ciphertext as BufferSource));
+      const reseal = async (data: Uint8Array, header = p.header.slice()) => {
+        new DataView(header.buffer, header.byteOffset).setUint32(header.length - 4, data.length + 16);
+        const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: p.iv as BufferSource, additionalData: header as BufferSource }, key, data as BufferSource));
+        return finishPacket(header, ciphertext);
+      };
+      for (const offset of [0, 32, 96]) {
+        const altered = plain.slice();
+        if (offset === 0) altered.set(eve.raw);
+        else altered[offset] ^= 1;
+        await expect(openPayload(await reseal(altered), pass)).rejects.toBeInstanceOf(SignatureError);
+      }
+      const changedHeader = p.header.slice();
+      changedHeader[3] ^= 0x20;
+      await expect(openPayload(await reseal(plain, changedHeader), pass)).rejects.toBeInstanceOf(SignatureError);
+      await expect(openPayload(await reseal(plain.slice(0, 95)), pass)).rejects.toBeInstanceOf(SignatureError);
+      await expect(openPayload(await reseal(plain.subarray(96)), pass, Date.now(), [], alice)).rejects.toBeInstanceOf(SignatureError);
+    });
+
+    it('refuses truncated, nested and downgraded private signature packets', async () => {
+      const alice = await signer();
+      const packet = await sealPayload(text, pass, MODE_CODEART, undefined, 0, 0, '', 0, [], false, alice, 'private');
+      expect(() => parsePacket(packet.slice(0, -1))).toThrow(PacketError);
+      const nested = packet.slice();
+      nested[4] = 5;
+      repairCrc(nested);
+      expect(() => parsePacket(nested)).toThrow(/unsupported private signature encryption version/);
+      await expect(signPacket(packet, alice)).rejects.toThrow(/already signed/);
+      const downgraded = new Uint8Array(packet.length - 1);
+      downgraded.set(packet.subarray(0, 4));
+      downgraded[2] = packet[4];
+      downgraded.set(packet.subarray(5), 4);
+      repairCrc(downgraded);
+      await expect(openPayload(downgraded, pass)).rejects.toBeInstanceOf(WrongPassphraseError);
+      await expect(openPayload(downgraded, pass, Date.now(), [], alice)).rejects.toThrow(/Unsigned message/);
+    });
   });
 
   it.each(['pbkdf2', 'argon2id', 'passcode'])('preserves signed files and settings with %s encryption', async (kind) => {
@@ -125,11 +213,11 @@ function cover(): Rgba {
   return { width, height, data };
 }
 
-describe('signed messages through images', () => {
+describe.each(['public', 'private'] as const)('%s signed messages through images', (visibility) => {
   it.each(['codeart', 'qr', 'fakeqr', 'lsb', 'dct'])('retains a verifiable signature through %s', async (mode) => {
     const alice = await signer();
     const modes: Record<string, number> = { codeart: MODE_CODEART, qr: MODE_QR, fakeqr: MODE_FAKEQR, lsb: MODE_STEGO, dct: MODE_DCT };
-    const packet = await sealPayload(text, pass, modes[mode], undefined, 0, 0, '', 0, [], false, alice);
+    const packet = await sealPayload(text, pass, modes[mode], undefined, 0, 0, '', 0, [], false, alice, visibility);
     let decoded: Uint8Array;
     if (mode === 'codeart') decoded = decodeCodeArt(encodeCodeArt(packet));
     else if (mode === 'qr') decoded = decodePlainQr(encodePlainQr(packet));
@@ -144,7 +232,7 @@ describe('signed messages through images', () => {
 
   it('verifies a signed packet only after all split parts have been assembled', async () => {
     const alice = await signer();
-    const packet = await sealPayload(text, pass, MODE_CODEART, undefined, 0, 0, '', 0, [], false, alice);
+    const packet = await sealPayload(text, pass, MODE_CODEART, undefined, 0, 0, '', 0, [], false, alice, visibility);
     const frames = splitPacket(packet, 110).map((part) => decodeCodeArt(encodeCodeArt(part))).reverse();
     expect(frames.length).toBeGreaterThan(1);
     const assembled = assemble(frames);

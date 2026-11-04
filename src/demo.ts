@@ -19,7 +19,7 @@ const SECRET = 'The vault code is 4-8-15-16-23-42. (This is only a demo secret.)
 const KEY_NAME = 'Demo tour key (temporary)';
 const KEY_PASS = 'demo tour passphrase 2468 blue';
 const TYPE_MS = 90; // time per typed letter: slow enough to read along
-const FIELDS = ['secret', 'pass', 'mode', 'anim-pick', 'read-time', 'chk-lock-read-time', 'expiry', 'passcode', 'read-clear', 'anim-style', 'chk-motion', 'to-self', 'pass2', 'chk-split', 'chk-nonsense', 'chk-autospeak', 'sign-key', 'sign-pass', 'sender-expected', 'key-purpose'];
+const FIELDS = ['secret', 'pass', 'mode', 'anim-pick', 'read-time', 'chk-lock-read-time', 'expiry', 'passcode', 'read-clear', 'anim-style', 'chk-motion', 'to-self', 'pass2', 'chk-split', 'chk-nonsense', 'chk-autospeak', 'sign-key', 'sign-pass', 'sign-visibility', 'sender-expected', 'key-purpose'];
 
 let running = false;
 

@@ -1,7 +1,7 @@
 import { argon2Bytes, defaultKdf, type KdfSpec } from './kdf';
 import { SLOT_P256, SLOT_PASS, SLOT_X25519, TAG_LEN, buildHeader, buildHeaderPk, finishPacket, parsePacket, type Packet, type PkSlot } from './packet';
 import { unwrapWith, wrapForRecipient, type Identity, type PublicKey } from './pubkey';
-import { signPacket, verifyPacketSignature } from './signing';
+import { PRIVATE_SIGNATURE_LEN, signPacket, signPrivatePayload, verifyPacketSignature, verifyPrivatePayload, type SignatureVisibility } from './signing';
 
 const PBKDF2_ITERATIONS = 600_000; // version 1 packets only
 const subtle = globalThis.crypto.subtle;
@@ -106,7 +106,9 @@ export async function sealPayload(
   recipients: PublicKey[] = [],
   readLocked = false,
   signer?: Identity,
+  signatureVisibility: SignatureVisibility = 'public',
 ): Promise<Uint8Array> {
+  if (signatureVisibility !== 'public' && signatureVisibility !== 'private') throw new Error('Choose public or private sender signing.');
   let data = encodePayload(payload);
   const hasAnim = anim > 0 && anim < 256;
   const hasExpiry = expiresAt > 0 && expiresAt < 2 ** 32;
@@ -140,8 +142,8 @@ export async function sealPayload(
   }
   if (recipients.length) {
     if (passcode) throw new Error('A recipient pass code cannot be combined with public keys');
-    const packet = await sealRecipients(data, compressed, payload.kind === 'file', hasAnim, hasExpiry, hasRead, mode, passphrase, kdf, recipients);
-    return signer ? signPacket(packet, signer) : packet;
+    const packet = await sealRecipients(data, compressed, payload.kind === 'file', hasAnim, hasExpiry, hasRead, mode, passphrase, kdf, recipients, signatureVisibility === 'private' ? signer : undefined);
+    return signer && signatureVisibility === 'public' ? signPacket(packet, signer) : packet;
   }
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -163,10 +165,12 @@ export async function sealPayload(
   } else {
     key = await deriveKey(passphrase, salt, kdf);
   }
-  const header = buildHeader(mode, compressed, salt, iv, data.length + TAG_LEN, payload.kind === 'file', kdf, hasAnim, hasExpiry, slot, hasRead);
+  const privateSignature = !!signer && signatureVisibility === 'private';
+  const header = buildHeader(mode, compressed, salt, iv, data.length + TAG_LEN + (privateSignature ? PRIVATE_SIGNATURE_LEN : 0), payload.kind === 'file', kdf, hasAnim, hasExpiry, slot, hasRead, privateSignature);
+  if (privateSignature) data = await signPrivatePayload(data, header, signer!);
   const ct = new Uint8Array(await subtle.encrypt({ name: 'AES-GCM', iv: bs(iv), additionalData: bs(header) }, key, bs(data)));
   const packet = finishPacket(header, ct);
-  return signer ? signPacket(packet, signer) : packet;
+  return signer && !privateSignature ? signPacket(packet, signer) : packet;
 }
 
 export const sealText = (text: string, passphrase: string, mode: number, kdf?: KdfSpec) => sealPayload({ kind: 'text', text }, passphrase, mode, kdf);
@@ -186,6 +190,7 @@ async function sealRecipients(
   passphrase: string,
   kdf: KdfSpec,
   recipients: PublicKey[],
+  privateSigner?: Identity,
 ): Promise<Uint8Array> {
   const contentKey = crypto.getRandomValues(new Uint8Array(32));
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -216,7 +221,8 @@ async function sealRecipients(
     const j = crypto.getRandomValues(new Uint32Array(1))[0] % (i + 1);
     [slots[i], slots[j]] = [slots[j], slots[i]];
   }
-  const header = buildHeaderPk(mode, compressed, iv, data.length + TAG_LEN, slots, isFile, hasAnim, hasExpiry, hasRead);
+  const header = buildHeaderPk(mode, compressed, iv, data.length + TAG_LEN + (privateSigner ? PRIVATE_SIGNATURE_LEN : 0), slots, isFile, hasAnim, hasExpiry, hasRead, !!privateSigner);
+  if (privateSigner) data = await signPrivatePayload(data, header, privateSigner);
   const ct = new Uint8Array(await subtle.encrypt({ name: 'AES-GCM', iv: bs(iv), additionalData: bs(header) }, await aesKey(contentKey, ['encrypt']), bs(data)));
   return finishPacket(header, ct);
 }
@@ -260,8 +266,8 @@ async function openSlots(p: Packet, passphrase: string, identities: Identity[]):
 /** Verifies and decrypts a framed packet. Throws WrongPassphraseError on auth failure. */
 export async function openPayload(buf: Uint8Array, passphrase: string, now = Date.now(), identities: Identity[] = [], expectedSender?: PublicKey): Promise<Opened> {
   const p = parsePacket(buf);
-  await verifyPacketSignature(p.signature, expectedSender);
-  if (p.slots) return finishOpen(await openSlots(p, passphrase, identities), p, now);
+  await verifyPacketSignature(p.signature, p.privateSignature ? undefined : expectedSender);
+  if (p.slots) return finishOpen(await openSlots(p, passphrase, identities), p, now, expectedSender);
   const decryptWith = async (k: CryptoKey) =>
     new Uint8Array(await subtle.decrypt({ name: 'AES-GCM', iv: bs(p.iv), additionalData: bs(p.header) }, k, bs(p.ciphertext)));
   let plain: Uint8Array;
@@ -281,11 +287,17 @@ export async function openPayload(buf: Uint8Array, passphrase: string, now = Dat
       throw new WrongPassphraseError();
     }
   }
-  return finishOpen(plain, p, now);
+  return finishOpen(plain, p, now, expectedSender);
 }
 
 /** Everything after the plaintext is known: inflate it and read the sender's stored settings. */
-async function finishOpen(plain: Uint8Array, p: Packet, now: number): Promise<Opened> {
+async function finishOpen(plain: Uint8Array, p: Packet, now: number, expectedSender?: PublicKey): Promise<Opened> {
+  let sender: PublicKey | undefined = p.signature ? { type: 'ed25519', raw: p.signature.publicKey } : undefined;
+  if (p.privateSignature) {
+    const verified = await verifyPrivatePayload(plain, p.header, expectedSender);
+    plain = verified.data;
+    sender = verified.sender;
+  }
   if (p.compressed) plain = await inflate(plain);
   let anim: number | undefined;
   let expires: number | undefined;
@@ -316,7 +328,7 @@ async function finishOpen(plain: Uint8Array, p: Packet, now: number): Promise<Op
     }
   }
   const tag = {
-    ...(p.signature ? { sender: { type: 'ed25519' as const, raw: p.signature.publicKey } } : {}),
+    ...(sender ? { sender } : {}),
     ...(anim === undefined ? {} : { anim }),
     ...(expires === undefined ? {} : { expires }),
     ...(readSecs === undefined ? {} : { readSecs }),

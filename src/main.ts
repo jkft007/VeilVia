@@ -522,6 +522,7 @@ $('btn-create').onclick = async () => {
   warn.hidden = true;
   try {
     const signer = await getSigner();
+    const signatureVisibility = $<HTMLSelectElement>('sign-visibility').value === 'private' ? 'private' : 'public';
     const mode = currentMode();
     const kind = simple ? 'dct' : photoKind();
     const packetMode = { codeart: MODE_CODEART, qr: MODE_QR, fakeqr: MODE_FAKEQR, photo: kind === 'dct' ? MODE_DCT : MODE_STEGO }[mode];
@@ -538,18 +539,18 @@ $('btn-create').onclick = async () => {
     pkPhotoCount = 0;
     if (recips.length && mode === 'photo') {
       photoLead = [];
-      for (const r of recips) photoLead.push({ pass: photoPassFor(r), packet: await sealPayload(payload, '', packetMode, undefined, anim, expiresAt, '', readSecs, [r], readLocked, signer) });
-      if (pass) photoLead.push({ pass, packet: await sealPayload(payload, pass, packetMode, undefined, anim, expiresAt, '', readSecs, [], readLocked, signer) });
+      for (const r of recips) photoLead.push({ pass: photoPassFor(r), packet: await sealPayload(payload, '', packetMode, undefined, anim, expiresAt, '', readSecs, [r], readLocked, signer, signatureVisibility) });
+      if (pass) photoLead.push({ pass, packet: await sealPayload(payload, pass, packetMode, undefined, anim, expiresAt, '', readSecs, [], readLocked, signer, signatureVisibility) });
       if (photoLead.length > MAX_MESSAGES) throw new Error(`A photo can hold ${MAX_MESSAGES} ways in. Choose fewer recipients, or leave out the passphrase.`);
       pkPhotoCount = photoLead.length;
     }
     // Photo images find a pass code through a locator record, so their packets carry no key slot.
     const packet = photoLead
       ? photoLead[0].packet
-      : await sealPayload(payload, pass, packetMode, undefined, anim, expiresAt, mode === 'photo' ? '' : passcode, readSecs, recips, readLocked, signer);
+      : await sealPayload(payload, pass, packetMode, undefined, anim, expiresAt, mode === 'photo' ? '' : passcode, readSecs, recips, readLocked, signer, signatureVisibility);
     const extras: PhotoMessage[] = [];
     for (const x of extraRows) {
-      extras.push({ pass: x.pass, passcode: x.passcode, packet: await sealPayload({ kind: 'text', text: x.text }, x.pass, packetMode, undefined, anim, expiresAt, '', readSecs, [], readLocked, signer) });
+      extras.push({ pass: x.pass, passcode: x.passcode, packet: await sealPayload({ kind: 'text', text: x.text }, x.pass, packetMode, undefined, anim, expiresAt, '', readSecs, [], readLocked, signer, signatureVisibility) });
     }
 
     let cover: Rgba | null = null;
@@ -576,6 +577,9 @@ $('btn-create').onclick = async () => {
 
     const notes: string[] = [];
     notes.push(signer ? 'Signed with your Ed25519 key. Recipients must check your signing fingerprint through a trusted channel to identify you.' : 'Unsigned: encryption does not prove who sent this message. Choose a signing key under "Sign as a sender" to authenticate it.');
+    if (signer) notes.push(signatureVisibility === 'private'
+      ? 'Encrypted signature: only someone who can decrypt sees your signing key and signature. They could disclose them to others.'
+      : 'Public signature: anyone who extracts the packet can see your signing key. Choose an encrypted signature to hide it.');
     if (recips.length) notes.push(`Locked to ${recips.length} public key${recips.length > 1 ? 's' : ''}: there is no passphrase to send${pass ? ' (the passphrase you entered also opens it)' : ''}. Only the owner of a matching private key can open it.`);
     if (frames.length > 1) notes.push(`This secret is split across ${frames.length} images. Send all of them (the recipient adds them all on the Reveal tab, in any order).`);
     if (mode === 'codeart') {

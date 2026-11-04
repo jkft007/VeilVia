@@ -15,6 +15,9 @@
 // Version 5: 'S' 'T' | 5 | inner mode flags(1) | Ed25519 public key(32) | innerLen(4, BE) |
 //   complete version 1..4 packet | signature(64) | crc32(4, BE).
 // The signature binds a domain separator, this wrapper's header, and the complete inner packet.
+// Version 6: 'S' 'T' | 6 | mode flags(1) | encryption version(1, 1..4) | remaining encryption header |
+//   encrypted(public signing key(32) | signature(64) | compressed payload) | crc32(4, BE).
+// The private signature binds its own domain, the complete authenticated header, public key and payload.
 // Version 1 (older images, PBKDF2 with 600,000 rounds):
 // 'S' 'T' | 1 | mode(1) | salt(16) | iv(12) | ctLen(4, BE) | ciphertext+tag | crc32(4, BE)
 // mode: low nibble = image mode, 0x10 = payload was deflated before encryption, 0x20 = payload is a file,
@@ -40,6 +43,7 @@ export const VERSION_ARGON = 2;
 export const VERSION_SLOT = 3;
 export const VERSION_PK = 4;
 export const VERSION_SIGNED = 5;
+export const VERSION_PRIVATE_SIGNED = 6;
 export const SIGNED_HEADER_LEN = 40;
 export const SIGNATURE_LEN = 64;
 export const SLOT_PASS = 1;
@@ -77,6 +81,16 @@ export interface Packet {
   header: Uint8Array; // authenticated as AES-GCM additional data
   ciphertext: Uint8Array;
   signature?: { publicKey: Uint8Array; value: Uint8Array; data: Uint8Array };
+  privateSignature?: boolean;
+}
+
+function privateSignedHeader(header: Uint8Array): Uint8Array {
+  const out = new Uint8Array(header.length + 1);
+  out.set(header.subarray(0, 4));
+  out[2] = VERSION_PRIVATE_SIGNED;
+  out[4] = header[2];
+  out.set(header.subarray(4), 5);
+  return out;
 }
 
 let crcTable: Uint32Array | undefined;
@@ -106,6 +120,7 @@ export function buildHeader(
   hasExpiry = false,
   slot?: Uint8Array,
   hasRead = false,
+  privateSignature = false,
 ): Uint8Array {
   const flags =
     mode | (compressed ? FLAG_COMPRESSED : 0) | (isFile ? FLAG_FILE : 0) | (hasAnim ? FLAG_ANIM : 0) | (hasExpiry ? FLAG_EXPIRY : 0) | (hasRead ? FLAG_READ : 0);
@@ -128,7 +143,7 @@ export function buildHeader(
   h.set(iv, o + 16);
   new DataView(h.buffer).setUint32(o + 28, ctLen);
   if (slot) h.set(slot, fixed);
-  return h;
+  return privateSignature ? privateSignedHeader(h) : h;
 }
 
 /** The header of a version 4 packet: the fixed part followed by every slot. */
@@ -142,6 +157,7 @@ export function buildHeaderPk(
   hasAnim = false,
   hasExpiry = false,
   hasRead = false,
+  privateSignature = false,
 ): Uint8Array {
   if (slots.length < 1 || slots.length > MAX_SLOTS) throw new PacketError('a packet needs 1 to ' + MAX_SLOTS + ' slots');
   for (const s of slots) if (SLOT_BODY_LEN[s.type] !== s.body.length) throw new PacketError('bad slot');
@@ -160,15 +176,15 @@ export function buildHeaderPk(
     h.set(s.body, o);
     o += s.body.length;
   }
-  return h;
+  return privateSignature ? privateSignedHeader(h) : h;
 }
 
-function parsePk(buf: Uint8Array): Packet {
-  if (buf.length < HEADER_LEN_PK + TAG_LEN + 4) throw new PacketError('truncated packet');
-  const n = buf[4];
+function parsePk(buf: Uint8Array, shift = 0): Packet {
+  if (buf.length < HEADER_LEN_PK + shift + TAG_LEN + 4) throw new PacketError('truncated packet');
+  const n = buf[4 + shift];
   if (n < 1 || n > MAX_SLOTS) throw new PacketError('bad slot count');
   const slots: PkSlot[] = [];
-  let o = HEADER_LEN_PK;
+  let o = HEADER_LEN_PK + shift;
   for (let i = 0; i < n; i++) {
     const len = SLOT_BODY_LEN[buf[o]];
     if (!len || o + 1 + len > buf.length) throw new PacketError('bad slot');
@@ -176,12 +192,13 @@ function parsePk(buf: Uint8Array): Packet {
     o += 1 + len;
   }
   const dv = new DataView(buf.buffer, buf.byteOffset);
-  const ctLen = dv.getUint32(17);
+  const ctLen = dv.getUint32(17 + shift);
   if (o + ctLen + 4 > buf.length || ctLen < TAG_LEN) throw new PacketError('truncated packet');
   const end = o + ctLen;
   if (crc32(buf.subarray(0, end)) !== dv.getUint32(end)) throw new PacketError('checksum mismatch');
   return {
-    version: VERSION_PK,
+    version: buf[2],
+    ...(shift ? { privateSignature: true } : {}),
     slots,
     mode: buf[3] & 0x07,
     compressed: (buf[3] & FLAG_COMPRESSED) !== 0,
@@ -191,7 +208,7 @@ function parsePk(buf: Uint8Array): Packet {
     hasRead: (buf[3] & FLAG_READ) !== 0,
     kdf: { type: 'pbkdf2' },
     salt: new Uint8Array(16),
-    iv: buf.slice(5, 17),
+    iv: buf.slice(5 + shift, 17 + shift),
     header: buf.slice(0, o),
     ciphertext: buf.slice(o, end),
   };
@@ -219,17 +236,19 @@ export function parsePacket(buf: Uint8Array): Packet {
     if (inner.length !== p.header.length + p.ciphertext.length + 4 || buf[3] !== inner[3]) throw new PacketError('damaged signed packet');
     return { ...p, version: VERSION_SIGNED, signature: { publicKey: buf.slice(4, 36), value: buf.slice(end, end + SIGNATURE_LEN), data: buf.slice(0, end) } };
   }
-  if (buf.length > 3 && buf[0] === 0x53 && buf[1] === 0x54 && buf[2] === VERSION_PK) return parsePk(buf);
   if (buf.length < HEADER_LEN + TAG_LEN + 4 || buf[0] !== 0x53 || buf[1] !== 0x54) throw new PacketError('not a VeilVia messaging image');
-  const v = buf[2];
+  const shift = buf[2] === VERSION_PRIVATE_SIGNED ? 1 : 0;
+  const v = shift ? buf[4] : buf[2];
+  if (shift && (v < VERSION || v > VERSION_PK)) throw new PacketError('unsupported private signature encryption version');
+  if (v === VERSION_PK) return parsePk(buf, shift);
   if (v !== VERSION && v !== VERSION_ARGON && v !== VERSION_SLOT) throw new PacketError('unsupported version');
   let kdf: KdfSpec = { type: 'pbkdf2' };
-  let o = 4; // start of the salt
+  let o = 4 + shift; // start of the salt
   const slotLen = v === VERSION_SLOT ? SLOT_LEN : 0;
   if (v === VERSION_ARGON || v === VERSION_SLOT) {
-    if (buf.length < HEADER_LEN_V2 + slotLen + TAG_LEN + 4 || buf[4] !== KDF_ARGON2ID) throw new PacketError('unsupported key derivation');
-    kdf = { type: 'argon2id', memLog2: buf[5], iterations: buf[6] };
-    o = 7;
+    if (buf.length < HEADER_LEN_V2 + shift + slotLen + TAG_LEN + 4 || buf[4 + shift] !== KDF_ARGON2ID) throw new PacketError('unsupported key derivation');
+    kdf = { type: 'argon2id', memLog2: buf[5 + shift], iterations: buf[6 + shift] };
+    o = 7 + shift;
   }
   const fixedEnd = o + 32;
   const headerLen = fixedEnd + slotLen;
@@ -239,7 +258,8 @@ export function parsePacket(buf: Uint8Array): Packet {
   const end = headerLen + ctLen;
   if (crc32(buf.subarray(0, end)) !== dv.getUint32(end)) throw new PacketError('checksum mismatch');
   return {
-    version: v,
+    version: buf[2],
+    ...(shift ? { privateSignature: true } : {}),
     mode: buf[3] & 0x07,
     compressed: (buf[3] & FLAG_COMPRESSED) !== 0,
     isFile: (buf[3] & FLAG_FILE) !== 0,

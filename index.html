@@ -145,6 +145,12 @@
           <select id="sign-key"><option value="">Do not sign</option></select>
           <label for="sign-pass">Signing key's passphrase</label>
           <input id="sign-pass" type="password" autocomplete="off" spellcheck="false" />
+          <label for="sign-visibility">Who can see the signing key?</label>
+          <select id="sign-visibility" aria-describedby="sign-visibility-help">
+            <option value="public" selected>Anyone who extracts the packet (public signature)</option>
+            <option value="private">Only someone who can decrypt (encrypted signature)</option>
+          </select>
+          <p id="sign-visibility-help" class="hint">Choose an encrypted signature for photos when you want to hide who signed. The signing key and signature stay inside the encryption and are verified before the secret is shown. Anyone with the passphrase, passcode or a recipient private key can see them and could share them.</p>
           <button id="sign-manage" class="ghost small" type="button">Make or manage signing keys</button>
         </details>
 
@@ -447,7 +453,7 @@
         <h3>How it works</h3>
         <ol>
           <li><b>Encrypt.</b> Your browser encrypts the secret (text, a file or a pasted picture) with your passphrase: AES-256-GCM, with a key from Argon2id, which is deliberately slow and memory-hungry so that guessing is expensive. Your choices (reveal animation, reading time, expiry) are sealed inside the same encrypted data. Instead of a shared passphrase it can be locked to one or more <b>public keys</b>: the same random key is wrapped once for each recipient, so only the holder of a matching private key can open it, and the passphrase never has to travel. An optional recipient pass code is a second way in.</li>
-          <li><b>Sign (optional).</b> A separate Ed25519 signing key signs the complete encrypted packet. Only a signing fingerprint you checked with its owner through a trusted channel identifies a sender. Encryption alone does not. Valid signatures from unknown keys and unsigned messages are labelled accordingly; invalid signatures are refused. Signing adds 108 bytes and exposes the public signing key to anyone who can extract the packet.</li>
+          <li><b>Sign (optional).</b> A separate Ed25519 signing key identifies a sender only when you have checked its fingerprint through a trusted channel. Public signatures cover the encrypted packet and expose the signing key to anyone who extracts it (108 bytes extra). Encrypted signatures hide the signing key and signature inside the encryption and bind the payload, settings and recipient slots (97 bytes extra). Choose encrypted signatures for sender privacy in photos. Signatures are always checked before showing any secret; unsigned and unknown senders are labelled.</li>
           <li><b>Hide.</b> The encrypted bytes, with error correction added, are drawn into an image: a code-art mosaic, a QR code (a phone camera opens this page with the secret ready for the passphrase), a fake QR code (it scans as a harmless decoy while the real data hides in the error-correction budget) or an ordinary-looking photo. One photo can hold up to 4 messages, each with its own passphrase and pass code, and a secret that is too big is split across several images.</li>
           <li><b>Send.</b> You send the image like any picture: pasted, attached or scanned.</li>
           <li><b>Reveal.</b> The recipient pastes, drops, picks or scans the image on the Reveal tab and types the passphrase (or pass code), or, for an image sent to their public key, the passphrase of their own key (or a passkey, if they added one). The original comes back with an animation, and clears itself from the screen after the reading time. Nothing is uploaded: there is no server.</li>
