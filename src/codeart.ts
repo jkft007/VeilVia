@@ -26,7 +26,6 @@ const MIN_W = 21;
 
 export const MAX_PACKET = 60000;
 export const MAX_MICRODOT_PACKET = 1000;
-const MICRODOT_PALETTE = [0, 85, 170, 255].map((v) => [v, v, v]);
 
 function dataCapacity(W: number): number {
   return (W - 2) * (W - 3);
@@ -43,17 +42,44 @@ export function gridSizeFor(len: number): number {
   return W;
 }
 
-export function encodeCodeArt(packet: Uint8Array): Rgba {
-  return encodeMosaic(packet, false);
-}
-
-/** A compact greyscale dot stamp, read by the same calibrated mosaic decoder. */
+/** Three bytes per opaque RGB pixel, with just one byte recording unused trailing channels. */
 export function encodeMicrodot(packet: Uint8Array): Rgba {
   if (!packet.length || packet.length > MAX_MICRODOT_PACKET) throw new Error('A microdot needs 1 to 1000 bytes. Split larger secrets across several images.');
-  return encodeMosaic(packet, true);
+  const pixels = Math.ceil((packet.length + 1) / 3);
+  const width = Math.ceil(Math.sqrt(pixels));
+  const height = Math.ceil(pixels / width);
+  const data = new Uint8ClampedArray(width * height * 4).fill(255);
+  data[0] = width * height * 3 - packet.length - 1;
+  for (let i = 0; i < packet.length; i++) {
+    const channel = i + 1;
+    data[Math.floor(channel / 3) * 4 + channel % 3] = packet[i];
+  }
+  return { width, height, data };
 }
 
-function encodeMosaic(packet: Uint8Array, microdot: boolean): Rgba {
+/** Unpacks exact original pixels; callers validate the packet or split-part checksum as usual. */
+export function decodeMicrodot(img: Rgba): Uint8Array {
+  const { width, height, data } = img;
+  const maxSide = Math.ceil(Math.sqrt(Math.ceil((MAX_MICRODOT_PACKET + 1) / 3)));
+  const fail = () => { throw new Error('No microdot found. Use the original PNG without resizing or colour changes.'); };
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width > maxSide || height > maxSide || data.length !== width * height * 4) return fail();
+  const length = width * height * 3 - data[0] - 1;
+  if (length < 1 || length > MAX_MICRODOT_PACKET) return fail();
+  const pixels = Math.ceil((length + 1) / 3);
+  if (width !== Math.ceil(Math.sqrt(pixels)) || height !== Math.ceil(pixels / width)) return fail();
+  for (let i = 3; i < data.length; i += 4) if (data[i] !== 255) return fail();
+  for (let channel = length + 1; channel < width * height * 3; channel++) {
+    if (data[Math.floor(channel / 3) * 4 + channel % 3] !== 255) return fail();
+  }
+  const packet = new Uint8Array(length);
+  for (let i = 0; i < length; i++) {
+    const channel = i + 1;
+    packet[i] = data[Math.floor(channel / 3) * 4 + channel % 3];
+  }
+  return packet;
+}
+
+export function encodeCodeArt(packet: Uint8Array): Rgba {
   if (packet.length > MAX_PACKET) throw new Error('Message too large for a code image');
   const L = packet.length;
   const symbols: number[] = [];
@@ -67,17 +93,15 @@ function encodeMosaic(packet: Uint8Array, microdot: boolean): Rgba {
     symbols.push(lfsr & 3);
   }
 
-  const palette = microdot ? MICRODOT_PALETTE : PALETTE;
-  const cell = microdot ? 3 : Math.max(W > 140 ? 6 : 8, Math.ceil(360 / (W + 2 * QUIET)));
+  const cell = Math.max(W > 140 ? 6 : 8, Math.ceil(360 / (W + 2 * QUIET)));
   const size = (W + 2 * QUIET) * cell;
   const data = new Uint8ClampedArray(size * size * 4).fill(255);
 
-  const paint = (r: number, c: number, rgb: number[], dot = false) => {
+  const paint = (r: number, c: number, rgb: number[]) => {
     const x0 = (c + QUIET) * cell;
     const y0 = (r + QUIET) * cell;
     for (let y = y0; y < y0 + cell; y++)
       for (let x = x0; x < x0 + cell; x++) {
-        if (dot && (x - x0 - (cell - 1) / 2) ** 2 + (y - y0 - (cell - 1) / 2) ** 2 > (cell * 0.45) ** 2) continue;
         const o = (y * size + x) * 4;
         data[o] = rgb[0];
         data[o + 1] = rgb[1];
@@ -91,11 +115,11 @@ function encodeMosaic(packet: Uint8Array, microdot: boolean): Rgba {
       const onRing = r === 0 || c === 0 || r === W - 1 || c === W - 1;
       if (onRing) {
         const dark = r === 0 || r === W - 1 ? c % 2 === 0 : r % 2 === 0;
-        if (dark) paint(r, c, microdot ? MICRODOT_PALETTE[0] : DARK);
+        if (dark) paint(r, c, DARK);
       } else if (r === 1) {
-        paint(r, c, palette[(c - 1) % 4], microdot);
+        paint(r, c, PALETTE[(c - 1) % 4]);
       } else {
-        paint(r, c, palette[symbols[s++]], microdot);
+        paint(r, c, PALETTE[symbols[s++]]);
       }
     }
   return { width: size, height: size, data };

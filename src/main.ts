@@ -1,4 +1,4 @@
-import { decodeCodeArt, encodeCodeArt, encodeMicrodot, MAX_MICRODOT_PACKET, MAX_PACKET, type Rgba } from './codeart';
+import { decodeCodeArt, decodeMicrodot, encodeCodeArt, encodeMicrodot, MAX_MICRODOT_PACKET, MAX_PACKET, type Rgba } from './codeart';
 import { cropTo8, extractDct, MAX_COVER_SIDE } from './dct';
 import { MAX_MESSAGES } from './lanes';
 import { findPhoto, hidePhoto, photoCapacity, photoLayout, type PhotoMessage } from './photo';
@@ -168,7 +168,7 @@ const MODE_HELP: Record<Mode, string> = {
   qr: 'A standard QR code holding a link to this page with the encrypted data inside it. Scanning it with any phone camera opens the page with the secret loaded, ready for the passphrase. Best for short secrets.',
   fakeqr: 'Scans as a harmless decoy of your choice (like a web link). The real secret is hidden inside the QR image itself.',
   photo: 'Looks like an ordinary picture.',
-  microdot: 'A compact greyscale dot-pattern stamp. Keep the original PNG and its white border: resizing, cropping or JPEG recompression may destroy it. This is not an invisible mark or a camera-scannable QR code.',
+  microdot: 'An ultra-small colour stamp: three encrypted bytes per pixel, at most 19 by 18 pixels per image. No border or error correction. Keep the exact original PNG: resizing, colour changes or JPEG conversion break it. Reveal by uploading or pasting, not QR scanning.',
 };
 const photoKind = () => $<HTMLSelectElement>('photo-kind').value as 'dct' | 'lsb';
 // ---- what to hide: text or a file ----------------------------------------------
@@ -594,7 +594,7 @@ $('btn-create').onclick = async () => {
       if (packet.length > 8000 && frames.length === 1) notes.push('This is a large image. Some apps shrink big images, which can make it unreadable.');
     } else if (mode === 'qr') notes.push('Anyone can scan these QR codes, but they will only see encrypted gibberish without the passphrase.');
     else if (mode === 'fakeqr') notes.push('A phone scanner will show your decoy. Keep the images at their original size: cropping or heavy shrinking breaks the hidden data.');
-    else if (mode === 'microdot') notes.push('Microdot: send the original PNG as a file or attachment, keeping its white border. Resizing, cropping or JPEG recompression may destroy it. It is a compact dot stamp, not an invisible mark; reveal it by uploading or pasting the image, not with a QR scanner.');
+    else if (mode === 'microdot') notes.push('Microdot: tiny full-colour pixels with no error correction. Send the exact original PNG as a file or attachment. Do not resize, crop, add a border, change colours or convert to JPEG. Reveal by uploading or pasting the image, not with a QR scanner. Existing greyscale microdots can still be opened.');
     else if (kind === 'dct') notes.push('Survives normal JPEG recompression, but not cropping, rotating or heavy resizing. Photos are limited to 1280 px so most apps leave them alone.' + (cover && frames.length > 1 ? ' All parts reuse your cover photo; without one, each part gets its own generated picture.' : ''));
     else notes.push('Send these as original PNG files or attachments. Pasting inline in Gmail, WhatsApp, iMessage and most social apps usually recompresses images and destroys the hidden data. If in doubt, use the JPEG-safe method.');
     warn.textContent = notes.join(' ');
@@ -688,7 +688,7 @@ function thumbOf(rgba: Rgba): HTMLCanvasElement {
 }
 
 // When the loaded image is addressed to a public key, the passphrase box is for the key's passphrase: say so. Only
-// images that can be read without a passphrase (code art, QR) can be recognised; a photo keeps the general wording.
+// images that can be read without a passphrase (microdot, code art, QR) can be recognised; a photo keeps the general wording.
 const frameCache = new Map<number, Uint8Array | null>();
 let labelToken = 0;
 async function updateRevealLabel() {
@@ -697,7 +697,7 @@ async function updateRevealLabel() {
   for (const im of images) {
     if (!frameCache.has(im.id)) {
       let frame: Uint8Array | null = null;
-      for (const read of [() => decodePlainQr(im.rgba), () => decodeCodeArt(im.rgba)]) {
+      for (const read of [() => decodeMicrodot(im.rgba), () => decodePlainQr(im.rgba), () => decodeCodeArt(im.rgba)]) {
         try {
           frame = read();
           parseFrame(frame);
@@ -1019,6 +1019,7 @@ function showLockout(ms: number) {
 /** `pass` in the result is the passphrase that opens the packet: a photo's pass code resolves to the passphrase behind it. */
 async function decodeImage(img: Rgba, pass: string, pkPasses: string[] = []): Promise<{ frame: Uint8Array; mode: 'codeart' | 'stego'; pass: string } | null> {
   const attempts: [() => Promise<Uint8Array | { frame: Uint8Array; pass: string }> | Uint8Array, 'codeart' | 'stego'][] = [
+    [() => decodeMicrodot(img), 'codeart'],
     [() => decodePlainQr(img), 'codeart'],
     [() => decodeCodeArt(img), 'codeart'],
     [() => decodeFakeQr(img, pass), 'codeart'],

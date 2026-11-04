@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { inflateSync } from 'node:zlib';
 import jpeg from 'jpeg-js';
 import { decodeBuffer, encodeBuffer } from '../src/ecc';
 import { openPacket, openPayload, sealPayload, sealText, WrongPassphraseError } from '../src/crypto';
-import { decodeCodeArt, encodeCodeArt, encodeMicrodot, MAX_MICRODOT_PACKET, type Rgba } from '../src/codeart';
+import { decodeCodeArt, decodeMicrodot, encodeCodeArt, encodeMicrodot, MAX_MICRODOT_PACKET, type Rgba } from '../src/codeart';
 import { embed, extract, stegoCapacity } from '../src/stego';
-import { MODE_CODEART, MODE_MICRODOT, MODE_STEGO, parsePacket } from '../src/packet';
+import { buildPart, MODE_CODEART, MODE_MICRODOT, MODE_STEGO, parseFrame, parsePacket } from '../src/packet';
 import { generateKeyPair, importIdentity } from '../src/pubkey';
 import { assemble, splitPacket } from '../src/split';
 
@@ -93,18 +94,48 @@ describe('code-art', () => {
 });
 
 describe('microdot', () => {
-  it.each([1, MAX_MICRODOT_PACKET])('recovers all %i bytes from a compact greyscale stamp', (length) => {
+  it.each([1, 2, 3, 7, 31, 255, MAX_MICRODOT_PACKET])('recovers all %i bytes from an opaque pixel-packed stamp', (length) => {
     const packet = rnd(length);
     const image = encodeMicrodot(packet);
-    expect(decodeCodeArt(image)).toEqual(packet);
-    expect(image.width).toBeLessThan(encodeCodeArt(packet).width);
-    expect(image.data.every((value, i) => i % 4 === 3 || value === image.data[i - i % 4])).toBe(true);
+    expect(decodeMicrodot(image)).toEqual(packet);
+    expect(image.width).toBeLessThanOrEqual(19);
+    expect(image.height).toBeLessThanOrEqual(18);
+    expect(image.data.every((value, i) => i % 4 !== 3 || value === 255)).toBe(true);
+  });
+
+  it('preserves all 256 channel values without losing bytes to alpha premultiplication', () => {
+    const packet = Uint8Array.from({ length: 256 }, (_, i) => i);
+    expect(decodeMicrodot(encodeMicrodot(packet))).toEqual(packet);
+  });
+
+  it('still reads existing greyscale microdots', () => {
+    // Frozen pixels from the original three-pixel greyscale renderer.
+    const pixels = 'eJztmVuuwyAMRLvJbLKb5KofqazcTDsjbCDpHAkJIZeH6xekNWOMMcYYY8xoHo/Hu/3yeA+rncU6vO54JnHubdve/efzeUv5bOJ/9Fp/b6/193Yn+SpWs5Mr2OExPsQ9qH1mn7Pnr84pPY3xl9Xmr9BhW8BOqucfnZevpp/e+TO4k5+q82eysp2saodsfLi6fvY6Z0RO+SZzRT+N9fYsHTbboUSs7dE6UQbJq/2seZh+JYzNRxkkr7aseZg2So87tkOO439Uvf/Z/eqc8mutQodtATup7o+IjereYl1RcXY1TjL7qUT1hVjfVviamq+Z/YzSo9K3HX6Oh0e5s756RrUuQu/5jPzZ/qtzCpo/y9fU+hx9V2Lk1TNm6bDZDlPoiXVRntFPlGfWYr7lMTZQiZrjkDzjp1GeWYv5pszEolF63LEdcnyKh2hdRj+RnnojK/bOyMtoLcZPIz11L8q5zJ7VfWbpsNkOU0D7RONIP8w7JJJXax7mt6jmyQbZPxpHfsq8hyN5tfZmfotq70o9xnN+G7cd/o8PzL0A7fk475mMetdg6iUkf7ZWdU5h7qfId3rmZOQZP1Xr9godNtthCmg/ESbOMPpB6zLyzP87A+QXESbfMX6K1mXkmTgzE9uhzjE+MPcINdZFmDOimIZiI+JsD9U5hclfas6NML6GcivK0cy5mPEebIe1IH2ic6lzIp0wumL+68jsOBkb8i91TuSbjM+qNfPMfG075PgUD9V3v4zvbkcZJiYz/Tg2Ki+r982s77+o3mb2rNYVFTpstsMUUCxS3xl6aiSmr35DHAXKiep7l+pTzFrqm9joOjBiO9Rh46F6H2G+vzPvCep/+m0/s/Kyei9m3pOZdy01tqg1Q4UOm+0wHSa+MfcUdEY1pqG11Dg5CibPMvdl5GtqbkVrqfl6NLZDDvVOdNfxHlY7i3V43XFjjDHGGGPMGP4ABNzdsQ==';
+    const image = { width: 81, height: 81, data: new Uint8ClampedArray(inflateSync(Buffer.from(pixels, 'base64'))) };
+    expect(decodeCodeArt(image)).toEqual(buildPart(new Uint8Array(6), 0, 2, Uint8Array.from({ length: 32 }, (_, i) => i)));
+  });
+
+  it('rejects altered framing, missing pixels, alpha changes and resized images', () => {
+    const image = encodeMicrodot(rnd(31));
+    for (const [offset, value] of [[0, 255], [3, 254], [image.data.length - 2, 0]]) {
+      const data = image.data.slice();
+      data[offset] = value;
+      expect(() => decodeMicrodot({ ...image, data })).toThrow(/microdot/);
+    }
+    expect(() => decodeMicrodot({ ...image, data: image.data.slice(4) })).toThrow(/microdot/);
+    expect(() => decodeMicrodot(scale(image, 2))).toThrow(/microdot/);
+  });
+
+  it('detects changed encrypted pixels through the existing frame checksum', async () => {
+    const image = encodeMicrodot(await sealText('exact pixels only', 'pw', MODE_MICRODOT));
+    image.data[12] ^= 1;
+    expect(() => parseFrame(decodeMicrodot(image))).toThrow(/checksum/);
   });
 
   it('unlocks encrypted text with the recipient passcode and rejects a wrong code', async () => {
     const payload = { kind: 'text', text: 'A tiny private note' } as const;
     const packet = await sealPayload(payload, 'generated passphrase', MODE_MICRODOT, undefined, 0, 0, 'recipient code');
-    const decoded = decodeCodeArt(encodeMicrodot(packet));
+    const decoded = decodeMicrodot(encodeMicrodot(packet));
     expect(parsePacket(decoded).mode).toBe(MODE_MICRODOT);
     expect(await openPayload(decoded, 'recipient code')).toMatchObject(payload);
     await expect(openPayload(decoded, 'wrong code')).rejects.toBeInstanceOf(WrongPassphraseError);
@@ -115,7 +146,7 @@ describe('microdot', () => {
     const recipient = await importIdentity(pair.type, pair.raw, pair.pkcs8);
     const payload = { kind: 'file', name: 'tiny.bin', data: rnd(1600) } as const;
     const packet = await sealPayload(payload, '', MODE_MICRODOT, undefined, 0, 0, '', 0, [recipient]);
-    const frames = splitPacket(packet, MAX_MICRODOT_PACKET).map((part) => decodeCodeArt(encodeMicrodot(part))).reverse();
+    const frames = splitPacket(packet, MAX_MICRODOT_PACKET).map((part) => decodeMicrodot(encodeMicrodot(part))).reverse();
     expect(frames.length).toBeGreaterThan(1);
     const assembled = assemble(frames);
     if (assembled.state !== 'complete') throw new Error('incomplete');

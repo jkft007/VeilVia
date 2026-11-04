@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeCodeArt, encodeCodeArt, encodeMicrodot, type Rgba } from '../src/codeart';
+import { decodeCodeArt, decodeMicrodot, encodeCodeArt, encodeMicrodot, type Rgba } from '../src/codeart';
 import { ExpiredError, openPayload, sealPayload, WrongPassphraseError } from '../src/crypto';
 import { argon2Bytes } from '../src/kdf';
 import { MODE_CODEART, MODE_DCT, MODE_FAKEQR, MODE_MICRODOT, MODE_QR, MODE_STEGO, PacketError, SIGNED_HEADER_LEN, crc32, finishPacket, parseFrame, parsePacket } from '../src/packet';
@@ -220,7 +220,7 @@ describe.each(['public', 'private'] as const)('%s signed messages through images
     const packet = await sealPayload(text, pass, modes[mode], undefined, 0, 0, '', 0, [], false, alice, visibility);
     let decoded: Uint8Array;
     if (mode === 'codeart') decoded = decodeCodeArt(encodeCodeArt(packet));
-    else if (mode === 'microdot') decoded = decodeCodeArt(encodeMicrodot(packet));
+    else if (mode === 'microdot') decoded = decodeMicrodot(encodeMicrodot(packet));
     else if (mode === 'qr') decoded = decodePlainQr(encodePlainQr(packet));
     else if (mode === 'fakeqr') decoded = await decodeFakeQr(await encodeFakeQr(packet, 'https://example.test/', pass), pass);
     else {
@@ -235,7 +235,8 @@ describe.each(['public', 'private'] as const)('%s signed messages through images
     const alice = await signer();
     const packet = await sealPayload(text, pass, mode === 'microdot' ? MODE_MICRODOT : MODE_CODEART, undefined, 0, 0, '', 0, [], false, alice, visibility);
     const render = mode === 'microdot' ? encodeMicrodot : encodeCodeArt;
-    const frames = splitPacket(packet, 110).map((part) => decodeCodeArt(render(part))).reverse();
+    const decode = mode === 'microdot' ? decodeMicrodot : decodeCodeArt;
+    const frames = splitPacket(packet, 110).map((part) => decode(render(part))).reverse();
     expect(frames.length).toBeGreaterThan(1);
     const assembled = assemble(frames);
     expect(assembled.state).toBe('complete');
