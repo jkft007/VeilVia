@@ -1,6 +1,8 @@
-# VielVia messaging
+# VeilVia messaging
 
 Turn any text into an image you can paste into a message or email. Only someone with the passphrase can turn it back. Runs entirely in the browser; nothing is uploaded.
+
+The product name is **VeilVia**: [source](https://github.com/jkft007/VeilVia) and [live site](https://jkft007.github.io/VeilVia/).
 
 ## How to use
 **Sending** (Hide a secret tab)
@@ -58,9 +60,9 @@ Choose a file, or paste one from the clipboard (Ctrl/Cmd+V on the Hide tab with 
 ## In email, and the Outlook add-in
 Email programs do not run scripts, so no image or message can decrypt itself inside an email. Two things get close:
 - **Direct link.** The **Copy message** text for a code art or QR image includes a link that opens the secret on this site (see above); the recipient clicks it and types the passphrase.
-- **Outlook add-in** (`public/outlook/`; the manifest link and install steps are also on the site's landing page). A **Reveal secret** button on the message toolbar opens a task pane beside the email (pin it with the pin icon and it follows you from email to email; an Outlook cannot draw inside the message body itself). The pane looks in the open email for image attachments (pasted inline pictures count) or a VielVia messaging link, loads what it finds into this app (shown inside the pane), and the recipient types the passphrase. Decryption runs in the pane on the recipient's device. It asks Outlook only for permission to read the open email, and it only takes the data after `#q=` from a link (the link itself is never followed). Photo and fake-QR images are found the same way, from the attachment.
+- **Outlook add-in** (`public/outlook/`; the manifest link and install steps are also on the site's landing page). A **Reveal secret** button on the message toolbar opens a task pane beside the email (pin it with the pin icon and it follows you from email to email; an Outlook cannot draw inside the message body itself). The pane looks in the open email for image attachments (pasted inline pictures count) or a VeilVia messaging link, loads what it finds into this app (shown inside the pane), and the recipient types the passphrase. Decryption runs in the pane on the recipient's device. It asks Outlook only for permission to read the open email, and it only takes the data after `#q=` from a link (the link itself is never followed). Photo and fake-QR images are found the same way, from the attachment.
 
-  To install it (Outlook on the web, new Outlook, or classic Outlook with Microsoft 365): **Get Add-ins → My add-ins → Add a custom add-in → Add from URL**, and give it `https://jkft007.github.io/SecretTransport/outlook/manifest.xml`. If your Outlook does not accept a link, use the **Download file** button on the site's Outlook section (or save the manifest link) and choose **Add from file**. A Microsoft 365 admin can instead upload the same manifest under **Integrated apps** to roll it out to a team. Needs a mailbox that supports Mailbox requirement set 1.8 (all current Outlook versions).
+  To install it (Outlook on the web, new Outlook, or classic Outlook with Microsoft 365): **Get Add-ins → My add-ins → Add a custom add-in → Add from URL**, and give it `https://jkft007.github.io/VeilVia/outlook/manifest.xml`. If your Outlook does not accept a link, use the **Download file** button on the site's Outlook section (or save the manifest link) and choose **Add from file**. A Microsoft 365 admin can instead upload the same manifest under **Integrated apps** to roll it out to a team. Needs a mailbox that supports Mailbox requirement set 1.8 (all current Outlook versions).
 
   Honest caveats: the pane page loads Microsoft's `office.js` from Microsoft's own server (Outlook requires it; the main app loads no third-party script). The add-in was tested here with a stand-in for Outlook's email object, not inside a real Outlook, and some organisations block custom add-ins. If a mail program removes or rescales an image before it reaches the pane, the same limits as in the table above apply.
 

@@ -106,7 +106,7 @@ export async function encodePublicKey(k: PublicKey): Promise<string> {
 /** Accepts the bare key text, or a link that has it after `#to=`. Throws PubKeyError if it is not a valid key. */
 export async function decodePublicKey(text: string): Promise<PublicKey> {
   const m = /stpub1:([A-Za-z0-9_-]+)/.exec(text.trim());
-  if (!m) throw new PubKeyError('That is not a VielVia messaging public key (it should start with "stpub1:").');
+  if (!m) throw new PubKeyError('That is not a VeilVia messaging public key (it should start with "stpub1:").');
   let bytes: Uint8Array;
   try {
     bytes = fromB64u(m[1]);

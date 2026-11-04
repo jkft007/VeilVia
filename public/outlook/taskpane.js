@@ -1,5 +1,5 @@
 // Outlook task pane: finds the secret in the open email and hands it to the app in the frame below.
-// It reads the message's image attachments (inline pictures count) and any VielVia messaging link in the
+// It reads the message's image attachments (inline pictures count) and any VeilVia messaging link in the
 // text, and sends them to the frame with postMessage. Nothing is uploaded; decryption happens in the app.
 (function () {
   var frame = document.getElementById('app');

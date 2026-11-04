@@ -8,7 +8,7 @@ const manifest = readFileSync(new URL('manifest.xml', dir), 'utf8');
 describe('Outlook add-in files', () => {
   it('the manifest points only at files that ship and at this site', () => {
     const urls = [...manifest.matchAll(/(?:DefaultValue|AppDomain>)\s*="?(https:\/\/[^"<\s]+)/g)].map((m) => m[1]);
-    const own = [...manifest.matchAll(/DefaultValue="(https:\/\/jkft007\.github\.io\/SecretTransport\/outlook\/[^"]+)"/g)].map((m) => m[1]);
+    const own = [...manifest.matchAll(/DefaultValue="(https:\/\/jkft007\.github\.io\/VeilVia\/outlook\/[^"]+)"/g)].map((m) => m[1]);
     expect(urls.length).toBeGreaterThan(0);
     expect(own.length).toBeGreaterThanOrEqual(7);
     for (const u of own) {

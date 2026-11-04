@@ -264,7 +264,7 @@ async function renderMyKeys() {
         }
       }),
       button('Back up', () => {
-        download(`vielvia-messaging-key-${k.label.replace(/[^\w-]+/g, '_') || 'key'}.json`, exportBackup(k));
+        download(`veilvia-messaging-key-${k.label.replace(/[^\w-]+/g, '_') || 'key'}.json`, exportBackup(k));
         setStatus($('key-status'), 'Saved. The backup is still locked by the key\'s passphrase. Keep both somewhere safe: without them, messages sent to this key cannot be opened.');
       }),
       confirmButton('Delete', async () => {

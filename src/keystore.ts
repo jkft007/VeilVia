@@ -130,12 +130,12 @@ export async function parseBackup(text: string): Promise<StoredKey> {
   try {
     o = JSON.parse(text);
   } catch {
-    throw new KeyStoreError('That is not a VielVia messaging key backup.');
+    throw new KeyStoreError('That is not a VeilVia messaging key backup.');
   }
   const type = o.type;
   const kdf = o.kdf as { memLog2?: unknown; iterations?: unknown } | undefined;
   if (o.format !== FORMAT || o.v !== 1 || (type !== 'x25519' && type !== 'p256') || !kdf || typeof kdf.memLog2 !== 'number' || typeof kdf.iterations !== 'number') {
-    throw new KeyStoreError('That is not a VielVia messaging key backup.');
+    throw new KeyStoreError('That is not a VeilVia messaging key backup.');
   }
   const str = (v: unknown) => (typeof v === 'string' ? fromB64u(v) : new Uint8Array(0));
   const pub = str(o.pub);

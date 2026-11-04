@@ -8,13 +8,13 @@
 
   <Id>5d0b9c1e-7a34-4f6b-9c2d-3e8a1f4b6a70</Id>
   <Version>1.0.0.0</Version>
-  <ProviderName>VielVia messaging</ProviderName>
+  <ProviderName>VeilVia messaging</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
-  <DisplayName DefaultValue="VielVia messaging"/>
+  <DisplayName DefaultValue="VeilVia messaging"/>
   <Description DefaultValue="Reveal a secret hidden in an image or link in an email, right inside Outlook. Everything runs on your device."/>
-  <IconUrl DefaultValue="https://jkft007.github.io/SecretTransport/outlook/icon-64.png"/>
-  <HighResolutionIconUrl DefaultValue="https://jkft007.github.io/SecretTransport/outlook/icon-128.png"/>
-  <SupportUrl DefaultValue="https://github.com/jkft007/SecretTransport"/>
+  <IconUrl DefaultValue="https://jkft007.github.io/VeilVia/outlook/icon-64.png"/>
+  <HighResolutionIconUrl DefaultValue="https://jkft007.github.io/VeilVia/outlook/icon-128.png"/>
+  <SupportUrl DefaultValue="https://github.com/jkft007/VeilVia"/>
 
   <AppDomains>
     <AppDomain>https://jkft007.github.io</AppDomain>
@@ -34,7 +34,7 @@
   <FormSettings>
     <Form xsi:type="ItemRead">
       <DesktopSettings>
-        <SourceLocation DefaultValue="https://jkft007.github.io/SecretTransport/outlook/taskpane.html"/>
+        <SourceLocation DefaultValue="https://jkft007.github.io/VeilVia/outlook/taskpane.html"/>
         <RequestedHeight>450</RequestedHeight>
       </DesktopSettings>
     </Form>
@@ -84,15 +84,15 @@
     </Hosts>
     <Resources>
       <bt:Images>
-        <bt:Image id="Icon16" DefaultValue="https://jkft007.github.io/SecretTransport/outlook/icon-16.png"/>
-        <bt:Image id="Icon32" DefaultValue="https://jkft007.github.io/SecretTransport/outlook/icon-32.png"/>
-        <bt:Image id="Icon80" DefaultValue="https://jkft007.github.io/SecretTransport/outlook/icon-80.png"/>
+        <bt:Image id="Icon16" DefaultValue="https://jkft007.github.io/VeilVia/outlook/icon-16.png"/>
+        <bt:Image id="Icon32" DefaultValue="https://jkft007.github.io/VeilVia/outlook/icon-32.png"/>
+        <bt:Image id="Icon80" DefaultValue="https://jkft007.github.io/VeilVia/outlook/icon-80.png"/>
       </bt:Images>
       <bt:Urls>
-        <bt:Url id="TaskpaneUrl" DefaultValue="https://jkft007.github.io/SecretTransport/outlook/taskpane.html"/>
+        <bt:Url id="TaskpaneUrl" DefaultValue="https://jkft007.github.io/VeilVia/outlook/taskpane.html"/>
       </bt:Urls>
       <bt:ShortStrings>
-        <bt:String id="GroupLabel" DefaultValue="VielVia messaging"/>
+        <bt:String id="GroupLabel" DefaultValue="VeilVia messaging"/>
         <bt:String id="ButtonLabel" DefaultValue="Reveal secret"/>
       </bt:ShortStrings>
       <bt:LongStrings>
@@ -137,15 +137,15 @@
       </Hosts>
       <Resources>
         <bt:Images>
-          <bt:Image id="Icon16" DefaultValue="https://jkft007.github.io/SecretTransport/outlook/icon-16.png"/>
-          <bt:Image id="Icon32" DefaultValue="https://jkft007.github.io/SecretTransport/outlook/icon-32.png"/>
-          <bt:Image id="Icon80" DefaultValue="https://jkft007.github.io/SecretTransport/outlook/icon-80.png"/>
+          <bt:Image id="Icon16" DefaultValue="https://jkft007.github.io/VeilVia/outlook/icon-16.png"/>
+          <bt:Image id="Icon32" DefaultValue="https://jkft007.github.io/VeilVia/outlook/icon-32.png"/>
+          <bt:Image id="Icon80" DefaultValue="https://jkft007.github.io/VeilVia/outlook/icon-80.png"/>
         </bt:Images>
         <bt:Urls>
-          <bt:Url id="TaskpaneUrl" DefaultValue="https://jkft007.github.io/SecretTransport/outlook/taskpane.html"/>
+          <bt:Url id="TaskpaneUrl" DefaultValue="https://jkft007.github.io/VeilVia/outlook/taskpane.html"/>
         </bt:Urls>
         <bt:ShortStrings>
-          <bt:String id="GroupLabel" DefaultValue="VielVia messaging"/>
+          <bt:String id="GroupLabel" DefaultValue="VeilVia messaging"/>
           <bt:String id="ButtonLabel" DefaultValue="Reveal secret"/>
         </bt:ShortStrings>
         <bt:LongStrings>

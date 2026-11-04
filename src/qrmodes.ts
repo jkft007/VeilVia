@@ -152,7 +152,7 @@ const toB64Url = (u: Uint8Array) => toB64(u).replace(/\+/g, '-').replace(/\//g, 
 const fromB64Url = (s: string) => fromB64(s.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(s.length / 4) * 4, '='));
 
 /** Where a scanned plain QR sends the phone: this site, with the encrypted packet in the part after '#'. */
-export const SITE_URL = 'https://jkft007.github.io/SecretTransport/';
+export const SITE_URL = 'https://jkft007.github.io/VeilVia/';
 const QR_PARAM = '#q=';
 
 /** The text a plain QR holds: a link that opens the app with the encrypted packet ready to reveal. */

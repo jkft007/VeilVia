@@ -156,7 +156,17 @@ textarea, select, input[type='password'], input[type='text'] {
   background: var(--canvas);
   color: var(--text-primary);
   font: inherit;
-  transition: border-color var(--transition-quiet), background var(--transition-quiet), box-shadow var(--transition-quiet);
+  transition: border-color var(--transition-quiet), background var(--transition-quiet), box-shadow var(--transition-quiet), transform var(--transition-quiet);
+}
+
+textarea:hover, select:hover, input[type='password']:hover, input[type='text']:hover {
+  border-color: color-mix(in srgb, var(--route) 80%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--signal-violet) 18%, transparent);
+}
+
+textarea:focus-visible, select:focus-visible, input[type='password']:focus-visible, input[type='text']:focus-visible {
+  border-color: var(--signal-violet);
+  box-shadow: var(--focus-ring);
 }
 
 textarea { min-height: 112px; resize: vertical; }

@@ -200,7 +200,7 @@ export function finishPacket(header: Uint8Array, ciphertext: Uint8Array): Uint8A
 
 export function parsePacket(buf: Uint8Array): Packet {
   if (buf.length > 3 && buf[0] === 0x53 && buf[1] === 0x54 && buf[2] === VERSION_PK) return parsePk(buf);
-  if (buf.length < HEADER_LEN + TAG_LEN + 4 || buf[0] !== 0x53 || buf[1] !== 0x54) throw new PacketError('not a VielVia messaging image');
+  if (buf.length < HEADER_LEN + TAG_LEN + 4 || buf[0] !== 0x53 || buf[1] !== 0x54) throw new PacketError('not a VeilVia messaging image');
   const v = buf[2];
   if (v !== VERSION && v !== VERSION_ARGON && v !== VERSION_SLOT) throw new PacketError('unsupported version');
   let kdf: KdfSpec = { type: 'pbkdf2' };

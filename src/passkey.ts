@@ -50,8 +50,8 @@ export async function createPasskey(label: string): Promise<{ credId: Uint8Array
     const name = label.trim().slice(0, 60) || 'My key';
     const cred = (await navigator.credentials.create({
       publicKey: {
-        rp: { name: 'VielVia messaging', id: location.hostname },
-        user: { id: bs(rand(16)), name: `VielVia messaging: ${name}`, displayName: name },
+        rp: { name: 'VeilVia messaging', id: location.hostname },
+        user: { id: bs(rand(16)), name: `VeilVia messaging: ${name}`, displayName: name },
         challenge: bs(rand(32)),
         pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
         authenticatorSelection: { residentKey: 'preferred', userVerification: 'required' },

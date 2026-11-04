@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>VielVia messaging</title>
+    <title>VeilVia messaging</title>
     <link rel="stylesheet" href="/src/ui/styles.css" />
   </head>
   <body>
@@ -12,7 +12,7 @@
         <div class="header-btns">
           <button id="help-open" class="ghost small" type="button" aria-haspopup="dialog" title="How it works, how to use it and when to use it">? Help</button>
         </div>
-        <h1>VEILVIA</h1>
+        <h1>VeilVia</h1>
         <p class="brand-line">The concealed path.</p>
         <p>Turn any text into an image you can paste into a message or email. Only someone with the passphrase can turn it back. Everything happens in your browser: nothing is uploaded.</p>
         <p class="hint" id="outlook-note">Using Outlook? <a href="outlook/manifest.xml" download="manifest.xml">Download the Outlook add-in manifest</a> · <button id="outlook-how" class="link" type="button">how to install it</button></p>
@@ -436,10 +436,10 @@
         </ol>
 
         <h3 id="outlook">Use it inside Outlook (add-in)</h3>
-        <p>An email program cannot run the decryption itself, so VielVia messaging has an Outlook add-in: a <b>Reveal secret</b> button that opens a pane beside the email, picks up its image attachment (or secret link) and asks for the passphrase. Everything runs on your device.</p>
+        <p>An email program cannot run the decryption itself, so VeilVia messaging has an Outlook add-in: a <b>Reveal secret</b> button that opens a pane beside the email, picks up its image attachment (or secret link) and asks for the passphrase. Everything runs on your device.</p>
         <p>Add-in manifest link:</p>
         <div class="row">
-          <input id="manifest-url" type="text" readonly value="https://jkft007.github.io/SecretTransport/outlook/manifest.xml" spellcheck="false" />
+          <input id="manifest-url" type="text" readonly value="https://jkft007.github.io/VeilVia/outlook/manifest.xml" spellcheck="false" />
           <button id="btn-copy-manifest" class="ghost small" type="button">Copy</button>
           <a id="btn-dl-manifest" class="btn-like" href="outlook/manifest.xml" download="manifest.xml">Download file</a>
         </div>
@@ -479,7 +479,7 @@
       <footer>
         AES-256-GCM, with the key derived from your passphrase by Argon2id (64 MiB of memory per guess, so mass guessing is expensive). The image proves nothing about its content, but its size hints at the message length.
         Anyone who copies the image can try guesses offline, and nothing in a web page can limit that: a long, random passphrase is your real protection. Repeated wrong guesses on this device are also slowed down.
-        <br />Open source (MIT): <a href="https://github.com/jkft007/SecretTransport" target="_blank" rel="noopener noreferrer">github.com/jkft007/SecretTransport</a>
+        <br />Open source (MIT): <a href="https://github.com/jkft007/VeilVia" target="_blank" rel="noopener noreferrer">github.com/jkft007/VeilVia</a>
       </footer>
     </main>
     <script type="module" src="/src/main.ts"></script>
