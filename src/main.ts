@@ -18,8 +18,9 @@ import { startPreview, type Preview } from './capture';
 import { readText } from './ocr';
 import { strength } from './strength';
 import { checkLock, defaultStore, fingerprint, recordFailure, recordSuccess } from './throttle';
-import { getRecipients, handleToHash, hasStoredKeys, initKeysUi, passphraseViaPasskey, storedPublicKeys } from './keysui';
-import { unlockAll } from './keystore';
+import { getExpectedSender, getRecipients, getSigner, handleToHash, hasStoredKeys, initKeysUi, passphraseViaPasskey, storedPublicKeys } from './keysui';
+import { listContacts, unlockAll } from './keystore';
+import { senderStatus } from './signing';
 import { poofCanvas, wallyPeek } from './poof';
 import { localVoices, speak, speechAvailable, stopSpeaking } from './speech';
 import { PasskeyError } from './passkey';
@@ -486,6 +487,7 @@ $('btn-create').onclick = async () => {
   const warn = $('warn');
   warn.hidden = true;
   try {
+    const signer = await getSigner();
     const mode = currentMode();
     const kind = photoKind();
     const packetMode = { codeart: MODE_CODEART, qr: MODE_QR, fakeqr: MODE_FAKEQR, photo: kind === 'dct' ? MODE_DCT : MODE_STEGO }[mode];
@@ -502,18 +504,18 @@ $('btn-create').onclick = async () => {
     pkPhotoCount = 0;
     if (recips.length && mode === 'photo') {
       photoLead = [];
-      for (const r of recips) photoLead.push({ pass: photoPassFor(r), packet: await sealPayload(payload, '', packetMode, undefined, anim, expiresAt, '', readSecs, [r], readLocked) });
-      if (pass) photoLead.push({ pass, packet: await sealPayload(payload, pass, packetMode, undefined, anim, expiresAt, '', readSecs, [], readLocked) });
+      for (const r of recips) photoLead.push({ pass: photoPassFor(r), packet: await sealPayload(payload, '', packetMode, undefined, anim, expiresAt, '', readSecs, [r], readLocked, signer) });
+      if (pass) photoLead.push({ pass, packet: await sealPayload(payload, pass, packetMode, undefined, anim, expiresAt, '', readSecs, [], readLocked, signer) });
       if (photoLead.length > MAX_MESSAGES) throw new Error(`A photo can hold ${MAX_MESSAGES} ways in. Choose fewer recipients, or leave out the passphrase.`);
       pkPhotoCount = photoLead.length;
     }
     // Photo images find a pass code through a locator record, so their packets carry no key slot.
     const packet = photoLead
       ? photoLead[0].packet
-      : await sealPayload(payload, pass, packetMode, undefined, anim, expiresAt, mode === 'photo' ? '' : passcode, readSecs, recips, readLocked);
+      : await sealPayload(payload, pass, packetMode, undefined, anim, expiresAt, mode === 'photo' ? '' : passcode, readSecs, recips, readLocked, signer);
     const extras: PhotoMessage[] = [];
     for (const x of extraRows) {
-      extras.push({ pass: x.pass, passcode: x.passcode, packet: await sealPayload({ kind: 'text', text: x.text }, x.pass, packetMode, undefined, anim, expiresAt, '', readSecs, [], readLocked) });
+      extras.push({ pass: x.pass, passcode: x.passcode, packet: await sealPayload({ kind: 'text', text: x.text }, x.pass, packetMode, undefined, anim, expiresAt, '', readSecs, [], readLocked, signer) });
     }
 
     let cover: Rgba | null = null;
@@ -539,6 +541,7 @@ $('btn-create').onclick = async () => {
     }
 
     const notes: string[] = [];
+    notes.push(signer ? 'Signed with your Ed25519 key. Recipients must check your signing fingerprint through a trusted channel to identify you.' : 'Unsigned: encryption does not prove who sent this message. Choose a signing key under "Sign as a sender" to authenticate it.');
     if (recips.length) notes.push(`Locked to ${recips.length} public key${recips.length > 1 ? 's' : ''}: there is no passphrase to send${pass ? ' (the passphrase you entered also opens it)' : ''}. Only the owner of a matching private key can open it.`);
     if (frames.length > 1) notes.push(`This secret is split across ${frames.length} images. Send all of them (the recipient adds them all on the Reveal tab, in any order).`);
     if (mode === 'codeart') {
@@ -917,6 +920,8 @@ function clearResult() {
   $('timer').textContent = '';
   $<HTMLSelectElement>('read-clear').disabled = false;
   $('read-lock-note').hidden = true;
+  $('sender-status').textContent = '';
+  $('sender-status').hidden = true;
   handle?.skip();
 }
 $('btn-clear').onclick = clearResult;
@@ -1052,7 +1057,13 @@ $('btn-reveal').onclick = async () => {
         throw new NoKeyError('This image was sent to a public key, and there is no key saved on this device. Restore your key from its backup (in the "My keys" tab), or open this on the device that has it.');
       }
     }
-    const payload = await openPayload(asm.packet, info.slots ? pass : openPass, Date.now(), identities);
+    const expectedSender = await getExpectedSender();
+    const payload = await openPayload(asm.packet, info.slots ? pass : openPass, Date.now(), identities, expectedSender);
+    const sender = await senderStatus(payload.sender, await listContacts().catch(() => []));
+    const senderNote = $('sender-status');
+    senderNote.textContent = sender.message;
+    senderNote.className = sender.trusted ? 'status' : 'warn';
+    senderNote.hidden = false;
     recordSuccess(attemptStore, fp);
     const text = payload.kind === 'text' ? payload.text : `📄 ${payload.name}\n${fmt(payload.data.length)}`;
 

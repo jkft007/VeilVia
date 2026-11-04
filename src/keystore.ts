@@ -33,6 +33,7 @@ export interface Contact {
   type: KeyType;
   pub: Uint8Array;
   added: number;
+  verified?: boolean; // signing fingerprint checked with its owner through a trusted channel
 }
 
 const aad = (type: KeyType, pub: Uint8Array) => {
@@ -134,7 +135,7 @@ export async function parseBackup(text: string): Promise<StoredKey> {
   }
   const type = o.type;
   const kdf = o.kdf as { memLog2?: unknown; iterations?: unknown } | undefined;
-  if (o.format !== FORMAT || o.v !== 1 || (type !== 'x25519' && type !== 'p256') || !kdf || typeof kdf.memLog2 !== 'number' || typeof kdf.iterations !== 'number') {
+  if (o.format !== FORMAT || o.v !== 1 || (type !== 'x25519' && type !== 'p256' && type !== 'ed25519') || !kdf || typeof kdf.memLog2 !== 'number' || typeof kdf.iterations !== 'number') {
     throw new KeyStoreError('That is not a VeilVia messaging key backup.');
   }
   const str = (v: unknown) => (typeof v === 'string' ? fromB64u(v) : new Uint8Array(0));
@@ -205,6 +206,7 @@ export async function unlockAll(passphrase: string): Promise<Identity[]> {
   }
   const out: Identity[] = [];
   for (const k of keys) {
+    if (k.type === 'ed25519') continue;
     const id = await unprotectKey(k, passphrase);
     if (id) out.push(id);
   }

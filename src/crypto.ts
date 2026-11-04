@@ -1,6 +1,7 @@
 import { argon2Bytes, defaultKdf, type KdfSpec } from './kdf';
 import { SLOT_P256, SLOT_PASS, SLOT_X25519, TAG_LEN, buildHeader, buildHeaderPk, finishPacket, parsePacket, type Packet, type PkSlot } from './packet';
 import { unwrapWith, wrapForRecipient, type Identity, type PublicKey } from './pubkey';
+import { signPacket, verifyPacketSignature } from './signing';
 
 const PBKDF2_ITERATIONS = 600_000; // version 1 packets only
 const subtle = globalThis.crypto.subtle;
@@ -74,6 +75,7 @@ export type Opened = Payload & {
   expires?: number; // Unix seconds after which the reveal step refuses to show it
   readSecs?: number; // how long the revealed secret stays on screen (NEVER_CLEAR = until cleared by hand)
   readLocked?: boolean; // whether the recipient may change the reading time
+  sender?: PublicKey; // cryptographically verified signing key; identity still requires a trusted fingerprint
 };
 
 /** The stored reading time that means "do not clear automatically". */
@@ -103,6 +105,7 @@ export async function sealPayload(
   readSecs = 0,
   recipients: PublicKey[] = [],
   readLocked = false,
+  signer?: Identity,
 ): Promise<Uint8Array> {
   let data = encodePayload(payload);
   const hasAnim = anim > 0 && anim < 256;
@@ -137,7 +140,8 @@ export async function sealPayload(
   }
   if (recipients.length) {
     if (passcode) throw new Error('A recipient pass code cannot be combined with public keys');
-    return sealRecipients(data, compressed, payload.kind === 'file', hasAnim, hasExpiry, hasRead, mode, passphrase, kdf, recipients);
+    const packet = await sealRecipients(data, compressed, payload.kind === 'file', hasAnim, hasExpiry, hasRead, mode, passphrase, kdf, recipients);
+    return signer ? signPacket(packet, signer) : packet;
   }
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -161,7 +165,8 @@ export async function sealPayload(
   }
   const header = buildHeader(mode, compressed, salt, iv, data.length + TAG_LEN, payload.kind === 'file', kdf, hasAnim, hasExpiry, slot, hasRead);
   const ct = new Uint8Array(await subtle.encrypt({ name: 'AES-GCM', iv: bs(iv), additionalData: bs(header) }, key, bs(data)));
-  return finishPacket(header, ct);
+  const packet = finishPacket(header, ct);
+  return signer ? signPacket(packet, signer) : packet;
 }
 
 export const sealText = (text: string, passphrase: string, mode: number, kdf?: KdfSpec) => sealPayload({ kind: 'text', text }, passphrase, mode, kdf);
@@ -253,8 +258,9 @@ async function openSlots(p: Packet, passphrase: string, identities: Identity[]):
 }
 
 /** Verifies and decrypts a framed packet. Throws WrongPassphraseError on auth failure. */
-export async function openPayload(buf: Uint8Array, passphrase: string, now = Date.now(), identities: Identity[] = []): Promise<Opened> {
+export async function openPayload(buf: Uint8Array, passphrase: string, now = Date.now(), identities: Identity[] = [], expectedSender?: PublicKey): Promise<Opened> {
   const p = parsePacket(buf);
+  await verifyPacketSignature(p.signature, expectedSender);
   if (p.slots) return finishOpen(await openSlots(p, passphrase, identities), p, now);
   const decryptWith = async (k: CryptoKey) =>
     new Uint8Array(await subtle.decrypt({ name: 'AES-GCM', iv: bs(p.iv), additionalData: bs(p.header) }, k, bs(p.ciphertext)));
@@ -310,6 +316,7 @@ async function finishOpen(plain: Uint8Array, p: Packet, now: number): Promise<Op
     }
   }
   const tag = {
+    ...(p.signature ? { sender: { type: 'ed25519' as const, raw: p.signature.publicKey } } : {}),
     ...(anim === undefined ? {} : { anim }),
     ...(expires === undefined ? {} : { expires }),
     ...(readSecs === undefined ? {} : { readSecs }),

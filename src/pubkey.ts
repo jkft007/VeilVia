@@ -7,10 +7,10 @@ import { FINGERPRINT_WORDS } from './words';
 const subtle = globalThis.crypto.subtle;
 const bs = (u: Uint8Array) => u as unknown as BufferSource;
 
-export type KeyType = 'x25519' | 'p256';
-export const KEY_TYPE_ID: Record<KeyType, number> = { x25519: 1, p256: 2 };
-const TYPE_BY_ID: Record<number, KeyType> = { 1: 'x25519', 2: 'p256' };
-export const PUB_LEN: Record<KeyType, number> = { x25519: 32, p256: 65 };
+export type KeyType = 'x25519' | 'p256' | 'ed25519';
+export const KEY_TYPE_ID: Record<KeyType, number> = { x25519: 1, p256: 2, ed25519: 3 };
+const TYPE_BY_ID: Record<number, KeyType> = { 1: 'x25519', 2: 'p256', 3: 'ed25519' };
+export const PUB_LEN: Record<KeyType, number> = { x25519: 32, p256: 65, ed25519: 32 };
 
 export class PubKeyError extends Error {}
 
@@ -20,12 +20,12 @@ export interface PublicKey {
   raw: Uint8Array;
 }
 
-/** A private key made usable on this device. The CryptoKey cannot be exported again. */
+/** A decryption or signing key made usable on this device. The CryptoKey cannot be exported again. */
 export interface Identity extends PublicKey {
   priv: CryptoKey;
 }
 
-const algoOf = (t: KeyType) => (t === 'x25519' ? { name: 'X25519' } : { name: 'ECDH', namedCurve: 'P-256' });
+const algoOf = (t: KeyType) => (t === 'ed25519' ? { name: 'Ed25519' } : t === 'x25519' ? { name: 'X25519' } : { name: 'ECDH', namedCurve: 'P-256' });
 
 // ---- small encoders -------------------------------------------------------------
 export const b64u = (u: Uint8Array): string => {
@@ -63,6 +63,7 @@ export function preferredKeyType(): Promise<KeyType> {
 
 /** Whether this browser can use a key of this type at all (to refuse a recipient it cannot encrypt to). */
 export async function canUse(type: KeyType): Promise<boolean> {
+  if (type === 'ed25519') return false;
   try {
     await subtle.generateKey(algoOf(type) as EcKeyGenParams, false, ['deriveBits']);
     return true;
@@ -79,7 +80,7 @@ export interface NewKey {
 
 export async function generateKeyPair(type?: KeyType): Promise<NewKey> {
   const t = type ?? (await preferredKeyType());
-  const pair = (await subtle.generateKey(algoOf(t) as EcKeyGenParams, true, ['deriveBits'])) as CryptoKeyPair;
+  const pair = (await subtle.generateKey(algoOf(t) as EcKeyGenParams, true, t === 'ed25519' ? ['sign', 'verify'] : ['deriveBits'])) as CryptoKeyPair;
   return {
     type: t,
     raw: new Uint8Array(await subtle.exportKey('raw', pair.publicKey)),
@@ -87,9 +88,9 @@ export async function generateKeyPair(type?: KeyType): Promise<NewKey> {
   };
 }
 
-/** Makes a stored private key usable for decrypting, without allowing it to be exported again. */
+/** Makes a stored private key usable for its purpose, without allowing it to be exported again. */
 export async function importIdentity(type: KeyType, raw: Uint8Array, pkcs8: Uint8Array): Promise<Identity> {
-  const priv = await subtle.importKey('pkcs8', bs(pkcs8), algoOf(type) as EcKeyImportParams, false, ['deriveBits']);
+  const priv = await subtle.importKey('pkcs8', bs(pkcs8), algoOf(type) as EcKeyImportParams, false, type === 'ed25519' ? ['sign'] : ['deriveBits']);
   return { type, raw, priv };
 }
 
@@ -130,6 +131,7 @@ export async function decodePublicKey(text: string): Promise<PublicKey> {
 
 /** The link someone can click to send this person a secret: the Hide tab opens with the key filled in. */
 export async function publicKeyLink(k: PublicKey, base: string): Promise<string> {
+  if (k.type === 'ed25519') throw new PubKeyError('A signing key verifies senders; it cannot receive secrets.');
   return `${base}#to=${await encodePublicKey(k)}`;
 }
 
@@ -167,6 +169,7 @@ export const WRAPPED_LEN = 48; // a 32-byte content key + 16-byte tag
  * Returns the throwaway public key, the IV and the wrapped key: everything the recipient needs, and nothing secret.
  */
 export async function wrapForRecipient(contentKey: Uint8Array, to: PublicKey, bind: Uint8Array): Promise<{ eph: Uint8Array; iv: Uint8Array; wrapped: Uint8Array }> {
+  if (to.type === 'ed25519') throw new PubKeyError('A signing key cannot be used as an encryption recipient.');
   const eph = (await subtle.generateKey(algoOf(to.type) as EcKeyGenParams, true, ['deriveBits'])) as CryptoKeyPair;
   const ephPub = new Uint8Array(await subtle.exportKey('raw', eph.publicKey));
   const theirs = await subtle.importKey('raw', bs(to.raw), algoOf(to.type) as EcKeyImportParams, false, []);

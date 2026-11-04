@@ -19,7 +19,7 @@ const SECRET = 'The vault code is 4-8-15-16-23-42. (This is only a demo secret.)
 const KEY_NAME = 'Demo tour key (temporary)';
 const KEY_PASS = 'demo tour passphrase 2468 blue';
 const TYPE_MS = 90; // time per typed letter: slow enough to read along
-const FIELDS = ['secret', 'pass', 'mode', 'anim-pick', 'read-time', 'chk-lock-read-time', 'expiry', 'passcode', 'read-clear', 'anim-style', 'chk-motion', 'to-self', 'pass2', 'chk-split', 'chk-nonsense', 'chk-autospeak'];
+const FIELDS = ['secret', 'pass', 'mode', 'anim-pick', 'read-time', 'chk-lock-read-time', 'expiry', 'passcode', 'read-clear', 'anim-style', 'chk-motion', 'to-self', 'pass2', 'chk-split', 'chk-nonsense', 'chk-autospeak', 'sign-key', 'sign-pass', 'sender-expected', 'key-purpose'];
 
 let running = false;
 
@@ -144,6 +144,10 @@ export async function runDemo(d: DemoDeps): Promise<void> {
   $<HTMLInputElement>('chk-motion').checked = false; // the tour is about the animations
 
   try {
+    choose('sign-key', '');
+    $<HTMLInputElement>('sign-pass').value = '';
+    choose('sender-expected', '');
+    choose('key-purpose', 'encryption');
     // 1 ------------------------------------------------------------------------------------------------
     d.showTab('hide');
     say('Welcome. This tour does everything for real, slowly: it hides a demo secret in an image, opens it again, then sends one to a public key. Use Pause to read at your own speed, or Stop to leave.');

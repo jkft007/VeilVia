@@ -14,11 +14,13 @@ import {
   removePasskeyLock,
   saveContact,
   saveKey,
+  unprotectKey,
   type Contact,
   type StoredKey,
 } from './keystore';
 import { PasskeyError, createPasskey, passkeyPrf, passkeySupported } from './passkey';
-import { PubKeyError, canUse, decodePublicKey, encodePublicKey, fingerprintWords, generateKeyPair, keyId, preferredKeyType, publicKeyLink, type PublicKey } from './pubkey';
+import { PubKeyError, canUse, decodePublicKey, encodePublicKey, fingerprintWords, generateKeyPair, keyId, preferredKeyType, publicKeyLink, type Identity, type PublicKey } from './pubkey';
+import { samePublicKey, SignatureError } from './signing';
 import { encodeQr } from './qr';
 import { qrToRgba } from './qrmodes';
 import { strength } from './strength';
@@ -90,9 +92,10 @@ function confirmButton(text: string, onConfirm: () => void) {
 /** The public keys the secret should be locked to: the people added, plus my own key if "also to me" is ticked. */
 export async function getRecipients(): Promise<PublicKey[]> {
   const out: PublicKey[] = recipients.map((r) => r.pub);
-  if (myKeys.length && $<HTMLInputElement>('to-self').checked && out.length) {
-    const mine = { type: myKeys[0].type, raw: myKeys[0].pub };
-    if (!recipients.some((r) => r.id === myKeys[0].id)) out.push(mine);
+  const own = myKeys.find((k) => k.type !== 'ed25519');
+  if (own && $<HTMLInputElement>('to-self').checked && out.length) {
+    const mine = { type: own.type, raw: own.pub };
+    if (!recipients.some((r) => r.id === own.id)) out.push(mine);
   }
   return out;
 }
@@ -116,10 +119,11 @@ function renderRecipients() {
     ? 'Before you send: check these words with the key\'s owner by a channel you trust (a call, in person). If the words match, nobody swapped the key.'
     : '';
   $('pass-hint').textContent = recipients.length ? '(optional now: with a public key chosen, nobody needs it. Add one only as a second way in.)' : '(send it to your recipient a different way)';
-  $('to-self-row').hidden = !(myKeys.length && recipients.length);
+  $('to-self-row').hidden = !(hasStoredKeys() && recipients.length);
 }
 
 async function addRecipient(pub: PublicKey, label: string) {
+  if (pub.type === 'ed25519') throw new PubKeyError('That is a signing key, not an encryption key. Add it under "Add a sender\'s signing key" in My keys.');
   if (!(await canUse(pub.type))) throw new PubKeyError('This browser cannot encrypt to that kind of key.');
   const id = await keyId(pub);
   if (recipients.some((r) => r.id === id)) throw new PubKeyError('That key is already in the list.');
@@ -240,9 +244,10 @@ async function renderMyKeys() {
   for (const k of myKeys) {
     const pub = { type: k.type, raw: k.pub };
     const text = await encodePublicKey(pub);
-    const link = await publicKeyLink(pub, deps.siteBase());
+    const signing = k.type === 'ed25519';
+    const link = signing ? text : await publicKeyLink(pub, deps.siteBase());
     const card = el('div', '', 'keycard');
-    card.append(el('b', k.label), el('span', ` · ${k.type === 'x25519' ? 'X25519' : 'P-256'}`, 'hint'), el('div', await fingerprintWords(pub), 'hint'));
+    card.append(el('b', k.label), el('span', ` · ${signing ? 'Ed25519 signing' : k.type === 'x25519' ? 'X25519' : 'P-256'}`, 'hint'), el('div', await fingerprintWords(pub), 'hint'));
     const field = el('input');
     field.type = 'text';
     field.readOnly = true;
@@ -254,49 +259,111 @@ async function renderMyKeys() {
     const row = el('div', '', 'row');
     row.append(
       button('Copy public key', async () => setStatus($('key-status'), (await copyText(text, field)) ? 'Public key copied. Anyone may have it.' : 'Select the key and copy it.')),
-      button('Copy "send me a secret" link', async () => setStatus($('key-status'), (await copyText(link)) ? 'Link copied. It opens this site with your key ready to use.' : 'Could not copy the link here.', false)),
+      ...(signing ? [] : [button('Copy "send me a secret" link', async () => setStatus($('key-status'), (await copyText(link)) ? 'Link copied. It opens this site with your key ready to use.' : 'Could not copy the link here.', false))]),
       button('Show QR', () => {
         qrBox.hidden = !qrBox.hidden;
         if (!qrBox.hidden && !qrBox.firstChild) {
           const c = rgbaToCanvas(qrToRgba(encodeQr(new TextEncoder().encode(link), 'M')));
           c.style.cssText = 'width:180px;height:180px;image-rendering:pixelated;background:#fff';
-          qrBox.append(c, el('div', 'Scan to open a "send me a secret" page for this key.', 'hint'));
+          qrBox.append(c, el('div', signing ? 'Public signing key. Share it and compare its fingerprint through a trusted channel.' : 'Scan to open a "send me a secret" page for this key.', 'hint'));
         }
       }),
       button('Back up', () => {
         download(`veilvia-messaging-key-${k.label.replace(/[^\w-]+/g, '_') || 'key'}.json`, exportBackup(k));
-        setStatus($('key-status'), 'Saved. The backup is still locked by the key\'s passphrase. Keep both somewhere safe: without them, messages sent to this key cannot be opened.');
+        setStatus($('key-status'), 'Saved. The backup is still locked by the key\'s passphrase. Keep both somewhere safe: without them, you cannot use this key again.');
       }),
       confirmButton('Delete', async () => {
         await deleteKey(k.id).catch(() => undefined);
         await refresh();
-        setStatus($('key-status'), 'Key deleted from this device. Anything sent to it can no longer be opened here unless you restore a backup.');
+        setStatus($('key-status'), signing ? 'Signing key deleted. Restore its backup to sign as this sender again.' : 'Key deleted from this device. Anything sent to it can no longer be opened here unless you restore a backup.');
       }),
     );
-    card.append(field, row, passkeyRow(k), qrBox);
+    card.append(field, row);
+    if (!signing) card.append(passkeyRow(k));
+    card.append(qrBox);
     box.append(card);
   }
 }
 
-function renderContacts() {
+async function renderContacts() {
   const box = $('contacts');
   box.replaceChildren();
   const sel = $<HTMLSelectElement>('to-contact');
   sel.replaceChildren();
-  if (!contacts.length) box.append(el('p', 'No contacts yet. Add a public key with a name (on the Hide tab) and it is saved here.', 'hint'));
+  if (!contacts.length) box.append(el('p', 'No contacts yet. Add an encryption key on the Hide tab, or a signing key below.', 'hint'));
   for (const c of contacts) {
-    sel.append(new Option(c.label, c.id));
+    const signing = c.type === 'ed25519';
+    if (!signing) sel.append(new Option(c.label, c.id));
     const row = el('div', '', 'recip');
     const who = el('div');
-    who.append(el('b', c.label));
-    fingerprintWords({ type: c.type, raw: c.pub }).then((w) => who.append(el('div', w, 'hint')));
+    who.append(el('b', c.label), el('div', await fingerprintWords({ type: c.type, raw: c.pub }), 'hint'));
+    if (signing) {
+      who.append(el('div', c.verified ? 'Signing fingerprint checked' : 'Signing fingerprint NOT checked', 'hint'));
+      who.append(button(c.verified ? 'Stop trusting this signing key' : 'I checked these words with the sender', async () => {
+        try {
+          await saveContact({ ...c, verified: !c.verified });
+          await refresh();
+          setStatus($('key-status'), c.verified ? 'Sender trust removed.' : `Signing fingerprint for "${c.label}" marked checked. You can now require this sender on the Reveal tab.`);
+        } catch (e) {
+          setStatus($('key-status'), (e as Error).message, true);
+        }
+      }));
+    }
     row.append(who, confirmButton('Remove', async () => {
       await deleteContact(c.id).catch(() => undefined);
       await refresh();
     }));
     box.append(row);
   }
-  $('to-contact-row').hidden = !contacts.length;
+  $('to-contact-row').hidden = sel.options.length === 0;
+  const expected = $<HTMLSelectElement>('sender-expected');
+  const keep = expected.value;
+  const label = expected.selectedOptions[0]?.textContent ?? 'Required sender';
+  expected.replaceChildren(new Option('No required sender (show signature status)', ''));
+  for (const c of contacts) if (c.type === 'ed25519' && c.verified) expected.append(new Option(c.label, c.id));
+  if (keep && ![...expected.options].some((o) => o.value === keep)) expected.append(new Option(`${label} (no longer trusted)`, keep));
+  expected.value = keep;
+}
+
+async function onAddSigningContact() {
+  try {
+    const pub = await decodePublicKey($<HTMLInputElement>('sign-contact-key').value);
+    if (pub.type !== 'ed25519') throw new PubKeyError('Use the sender\'s Ed25519 signing key, not their encryption key.');
+    const label = $<HTMLInputElement>('sign-contact-label').value.trim().slice(0, 60);
+    if (!label) throw new PubKeyError('Give this signing contact a name.');
+    const id = await keyId(pub);
+    const old = contacts.find((c) => c.id === id && samePublicKey(pub, { type: c.type, raw: c.pub }));
+    await saveContact({ id, label, type: pub.type, pub: pub.raw, added: old?.added ?? Date.now(), verified: old?.verified ?? false });
+    $<HTMLInputElement>('sign-contact-key').value = '';
+    $<HTMLInputElement>('sign-contact-label').value = '';
+    await refresh();
+    setStatus($('key-status'), 'Signing contact saved. Check its displayed words with the sender through a trusted channel before marking it checked.');
+  } catch (e) {
+    setStatus($('key-status'), (e as Error).message, true);
+  }
+}
+
+export async function getSigner(): Promise<Identity | undefined> {
+  const id = $<HTMLSelectElement>('sign-key').value;
+  if (!id) return undefined;
+  const input = $<HTMLInputElement>('sign-pass');
+  try {
+    const key = (await listKeys()).find((k) => k.id === id && k.type === 'ed25519');
+    if (!key) throw new SignatureError('That signing key is no longer available. Choose a signing key again.');
+    const signer = await unprotectKey(key, input.value);
+    if (!signer) throw new SignatureError('The signing key could not be unlocked. Check its passphrase; no unsigned message was created.');
+    return signer;
+  } finally {
+    input.value = '';
+  }
+}
+
+export async function getExpectedSender(): Promise<PublicKey | undefined> {
+  const id = $<HTMLSelectElement>('sender-expected').value;
+  if (!id) return undefined;
+  const c = (await listContacts()).find((c) => c.id === id && c.type === 'ed25519' && c.verified);
+  if (!c) throw new SignatureError('The required sender is no longer trusted. Check their signing key again in My keys.');
+  return { type: c.type, raw: c.pub };
 }
 
 /** Reloads the key and contact lists (the guided tour uses this after it removes its own key). */
@@ -317,10 +384,17 @@ async function refresh() {
     setStatus($('key-status'), (e as Error).message, true);
   }
   await renderMyKeys();
-  renderContacts();
+  await renderContacts();
   renderRecipients();
-  $('key-reveal-hint').hidden = myKeys.length === 0;
-  $('btn-passkey').hidden = !myKeys.some((k) => k.pk);
+  const signing = $<HTMLSelectElement>('sign-key');
+  const keep = signing.value;
+  const label = signing.selectedOptions[0]?.textContent ?? 'Signing key';
+  signing.replaceChildren(new Option('Do not sign', ''));
+  for (const k of myKeys) if (k.type === 'ed25519') signing.append(new Option(k.label, k.id));
+  if (keep && ![...signing.options].some((o) => o.value === keep)) signing.append(new Option(`${label} (unavailable)`, keep));
+  signing.value = keep;
+  $('key-reveal-hint').hidden = !hasStoredKeys();
+  $('btn-passkey').hidden = !myKeys.some((k) => k.type !== 'ed25519' && k.pk);
   $<HTMLDetailsElement>('key-make').open = myKeys.length === 0; // with no key yet, the form is the first thing to see
 }
 
@@ -338,9 +412,13 @@ async function onCreateKey() {
   btn.disabled = true;
   setStatus(status, 'Making the key… (protecting it takes about a second)');
   try {
-    const pair = await generateKeyPair(await preferredKeyType());
+    const signing = $<HTMLSelectElement>('key-purpose').value === 'signing';
+    const pair = await generateKeyPair(signing ? 'ed25519' : await preferredKeyType()).catch((e) => {
+      if (signing) throw new SignatureError('This browser cannot create Ed25519 signing keys. Use a current browser with Ed25519 support.');
+      throw e;
+    });
     let stored = await protectKey(pair, label, pass);
-    const wantPasskey = $<HTMLInputElement>('key-passkey').checked;
+    const wantPasskey = !signing && $<HTMLInputElement>('key-passkey').checked;
     let passkeyNote = '';
     if (wantPasskey) {
       try {
@@ -360,7 +438,9 @@ async function onCreateKey() {
     $('key-show').textContent = 'Show';
     $('key-gen-note').hidden = true;
     await refresh();
-    setStatus(status, 'Key made. Now back it up: if this browser\'s data is cleared, anything sent to this key is lost for good. Then share your public key or link.' + passkeyNote);
+    setStatus(status, signing
+      ? 'Signing key made. Back it up, share its public half, and compare its fingerprint with your recipients through a trusted channel. Select it under "Sign as a sender" when creating a message.'
+      : 'Key made. Now back it up: if this browser\'s data is cleared, anything sent to this key is lost for good. Then share your public key or link.' + passkeyNote);
   } catch (e) {
     setStatus(status, (e as Error).message, true);
   } finally {
@@ -380,20 +460,20 @@ async function onImport() {
     $<HTMLTextAreaElement>('key-import').value = '';
     $<HTMLInputElement>('key-import-file').value = '';
     await refresh();
-    setStatus(status, `Restored "${k.label}". Use the key's passphrase when you reveal a message sent to it.`);
+    setStatus(status, k.type === 'ed25519' ? `Restored signing key "${k.label}". Select it under "Sign as a sender" to sign messages.` : `Restored "${k.label}". Use the key's passphrase when you reveal a message sent to it.`);
   } catch (e) {
     setStatus(status, e instanceof KeyStoreError || e instanceof PubKeyError ? e.message : 'That backup could not be read.', true);
   }
 }
 
 /** The stored keys' public halves, for finding photos that were sent to them. */
-export const storedPublicKeys = (): PublicKey[] => myKeys.map((k) => ({ type: k.type, raw: k.pub }));
-export const hasStoredKeys = () => myKeys.length > 0;
+export const storedPublicKeys = (): PublicKey[] => myKeys.filter((k) => k.type !== 'ed25519').map((k) => ({ type: k.type, raw: k.pub }));
+export const hasStoredKeys = () => myKeys.some((k) => k.type !== 'ed25519');
 
 const same = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((v, i) => v === b[i]);
 /** Asks for a passkey (fingerprint, face or PIN) and gives back the key passphrase it was keeping safe. */
 export async function passphraseViaPasskey(): Promise<string> {
-  const locked = myKeys.filter((k) => k.pk);
+  const locked = myKeys.filter((k) => k.type !== 'ed25519' && k.pk);
   if (!locked.length) throw new PasskeyError('No key on this device has a passkey yet. Add one in the "My keys" tab.');
   const { credId, prf } = await passkeyPrf(locked.map((k) => k.pk!));
   for (const k of locked) {
@@ -409,6 +489,16 @@ export function initKeysUi(d: Deps) {
   $('to-add').onclick = onAddKey;
   $('to-add-contact').onclick = onAddContact;
   $('key-create').onclick = onCreateKey;
+  $('sign-contact-add').onclick = onAddSigningContact;
+  $('sign-manage').onclick = () => {
+    deps.showKeysTab();
+    $<HTMLSelectElement>('key-purpose').value = 'signing';
+    $<HTMLDetailsElement>('key-make').open = true;
+    $('key-passkey-row').hidden = true;
+  };
+  $('key-purpose').onchange = () => {
+    $('key-passkey-row').hidden = $<HTMLSelectElement>('key-purpose').value === 'signing' || !passkeySupported();
+  };
   // A random passphrase for a new key: with a passkey keeping it safe, nobody has to remember or type it.
   $('key-gen').onclick = () => {
     const alphabet = 'abcdefghjkmnpqrstuvwxyz23456789'; // no look-alikes
@@ -422,11 +512,11 @@ export function initKeysUi(d: Deps) {
     $('key-show').textContent = 'Hide';
     $('key-pass').dispatchEvent(new Event('input', { bubbles: true }));
     const note = $('key-gen-note');
-    if (passkeySupported()) {
+    if (passkeySupported() && $<HTMLSelectElement>('key-purpose').value !== 'signing') {
       $<HTMLInputElement>('key-passkey').checked = true;
       note.textContent = 'A random passphrase is filled in, and the passkey box is ticked: a fingerprint, face or PIN will bring it back, so you need not remember it. Also copy it somewhere safe (a password manager): if you lose this device and its passkey, it is the only way to open a restored backup.';
     } else {
-      note.textContent = 'A random passphrase is filled in. Copy it somewhere safe (a password manager) now: this browser cannot make a passkey to bring it back, so it is the only way into the key.';
+      note.textContent = 'A random passphrase is filled in. Copy it somewhere safe (a password manager) now: it is needed to unlock this key and any restored backup.';
     }
     note.hidden = false;
   };

@@ -3,6 +3,7 @@ import { openPayload, sealPayload } from '../src/crypto';
 import { KeyStoreError, addPasskeyLock, exportBackup, parseBackup, passphraseFromPasskey, protectKey, removePasskeyLock, unprotectKey } from '../src/keystore';
 import { MODE_CODEART } from '../src/packet';
 import { generateKeyPair, keyId, photoPassFor } from '../src/pubkey';
+import { signPacket } from '../src/signing';
 
 describe('protected private keys', () => {
   it('opens with the right passphrase and a message locked to the public key opens with it', async () => {
@@ -32,6 +33,19 @@ describe('protected private keys', () => {
 });
 
 describe('key backups', () => {
+  it('restores a protected Ed25519 signing key without exposing its private half', async () => {
+    const k = await generateKeyPair('ed25519');
+    const stored = await protectKey(k, 'Alice signing', 'a signing key phrase 4471');
+    const restored = await parseBackup(exportBackup(stored));
+    expect(restored.type).toBe('ed25519');
+    expect(await unprotectKey(restored, 'wrong passphrase')).toBeNull();
+    const alice = await unprotectKey(restored, 'a signing key phrase 4471');
+    expect(alice).not.toBeNull();
+    await expect(crypto.subtle.exportKey('pkcs8', alice!.priv)).rejects.toThrow();
+    const packet = await signPacket(await sealPayload({ kind: 'text', text: 'from Alice' }, 'message pass', MODE_CODEART), alice!);
+    expect(await openPayload(packet, 'message pass', Date.now(), [], alice!)).toMatchObject({ text: 'from Alice', sender: { raw: k.raw } });
+  });
+
   it('round-trips and still opens with the passphrase', async () => {
     const k = await generateKeyPair('x25519');
     const stored = await protectKey(k, 'Ann', 'backup phrase long enough 55');

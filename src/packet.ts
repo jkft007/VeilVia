@@ -12,6 +12,9 @@
 //   Every slot wraps the same random 32-byte content key; the ciphertext is encrypted with that key, and the whole
 //   header including every slot is authenticated by AES-GCM. A recipient tries each slot with each key it holds, so
 //   the packet does not say who it is for.
+// Version 5: 'S' 'T' | 5 | inner mode flags(1) | Ed25519 public key(32) | innerLen(4, BE) |
+//   complete version 1..4 packet | signature(64) | crc32(4, BE).
+// The signature binds a domain separator, this wrapper's header, and the complete inner packet.
 // Version 1 (older images, PBKDF2 with 600,000 rounds):
 // 'S' 'T' | 1 | mode(1) | salt(16) | iv(12) | ctLen(4, BE) | ciphertext+tag | crc32(4, BE)
 // mode: low nibble = image mode, 0x10 = payload was deflated before encryption, 0x20 = payload is a file,
@@ -36,6 +39,9 @@ export const VERSION = 1; // also the version of the split-part frame
 export const VERSION_ARGON = 2;
 export const VERSION_SLOT = 3;
 export const VERSION_PK = 4;
+export const VERSION_SIGNED = 5;
+export const SIGNED_HEADER_LEN = 40;
+export const SIGNATURE_LEN = 64;
 export const SLOT_PASS = 1;
 export const SLOT_X25519 = 2;
 export const SLOT_P256 = 3;
@@ -70,6 +76,7 @@ export interface Packet {
   iv: Uint8Array;
   header: Uint8Array; // authenticated as AES-GCM additional data
   ciphertext: Uint8Array;
+  signature?: { publicKey: Uint8Array; value: Uint8Array; data: Uint8Array };
 }
 
 let crcTable: Uint32Array | undefined;
@@ -199,6 +206,19 @@ export function finishPacket(header: Uint8Array, ciphertext: Uint8Array): Uint8A
 }
 
 export function parsePacket(buf: Uint8Array): Packet {
+  if (buf.length > 3 && buf[0] === 0x53 && buf[1] === 0x54 && buf[2] === VERSION_SIGNED) {
+    if (buf.length < SIGNED_HEADER_LEN + HEADER_LEN + TAG_LEN + 4 + SIGNATURE_LEN + 4) throw new PacketError('truncated signed packet');
+    const dv = new DataView(buf.buffer, buf.byteOffset);
+    const len = dv.getUint32(36);
+    const end = SIGNED_HEADER_LEN + len;
+    if (end + SIGNATURE_LEN + 4 > buf.length) throw new PacketError('truncated signed packet');
+    if (crc32(buf.subarray(0, end + SIGNATURE_LEN)) !== dv.getUint32(end + SIGNATURE_LEN)) throw new PacketError('checksum mismatch');
+    const inner = buf.subarray(SIGNED_HEADER_LEN, end);
+    if (inner[2] < VERSION || inner[2] > VERSION_PK) throw new PacketError('unsupported signed packet version');
+    const p = parsePacket(inner);
+    if (inner.length !== p.header.length + p.ciphertext.length + 4 || buf[3] !== inner[3]) throw new PacketError('damaged signed packet');
+    return { ...p, version: VERSION_SIGNED, signature: { publicKey: buf.slice(4, 36), value: buf.slice(end, end + SIGNATURE_LEN), data: buf.slice(0, end) } };
+  }
   if (buf.length > 3 && buf[0] === 0x53 && buf[1] === 0x54 && buf[2] === VERSION_PK) return parsePk(buf);
   if (buf.length < HEADER_LEN + TAG_LEN + 4 || buf[0] !== 0x53 || buf[1] !== 0x54) throw new PacketError('not a VeilVia messaging image');
   const v = buf[2];
