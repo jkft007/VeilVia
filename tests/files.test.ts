@@ -6,6 +6,29 @@ import { embedDct, extractDct } from '../src/dct';
 import { decodeFakeQr, encodeFakeQr } from '../src/qrmodes';
 import { crc32, MODE_CODEART, MODE_DCT, MODE_FAKEQR, MODE_STEGO, parsePacket } from '../src/packet';
 import { compressSecretImage } from '../src/imageio';
+import { decodeImageSheet, encodeImageSheet } from '../src/imagesheet';
+
+describe('clipboard image sheets', () => {
+  const image = (width: number, height: number, value: number): Rgba => ({
+    width, height, data: Uint8ClampedArray.from({ length: width * height * 4 }, (_, i) => i % 4 === 3 ? 255 : (i + value) % 256),
+  });
+  it('preserves every pixel and original dimension of differently sized parts', () => {
+    const parts = [image(19, 18, 12), image(33, 41, 59), image(300, 120, 27)];
+    expect(decodeImageSheet(encodeImageSheet(parts))).toEqual(parts);
+  });
+  it('leaves ordinary images alone and rejects damaged or cropped sheet headers', () => {
+    expect(decodeImageSheet(image(20, 20, 3))).toBeNull();
+    const sheet = encodeImageSheet([image(19, 18, 12), image(16, 17, 7)]);
+    expect(() => decodeImageSheet({ ...sheet, height: sheet.height - 1 })).toThrow(/damaged/);
+    sheet.data[16] ^= 1;
+    expect(() => decodeImageSheet(sheet)).toThrow(/damaged/);
+  });
+  it('bounds sheet counts and dimensions before allocating pixels', () => {
+    const part = image(19, 18, 12);
+    expect(() => encodeImageSheet(Array(61).fill(part))).toThrow();
+    expect(() => encodeImageSheet([{ ...part, width: 16385 }, part])).toThrow();
+  });
+});
 
 describe('image compression fallback', () => {
   afterEach(() => vi.unstubAllGlobals());

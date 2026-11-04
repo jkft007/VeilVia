@@ -1,5 +1,6 @@
 import type { Rgba } from './codeart';
 import { decodeHeic, looksLikeHeic } from './heic';
+import { encodeImageSheet } from './imagesheet';
 
 export function rgbaToCanvas(img: Rgba, canvas = document.createElement('canvas')): HTMLCanvasElement {
   canvas.width = img.width;
@@ -69,15 +70,19 @@ export async function copyImage(canvas: HTMLCanvasElement): Promise<void> {
 
 /**
  * Puts a ready-to-paste message on the clipboard: rich text (all images + the link), plain text,
- * and, when there is just one image, the PNG itself for apps that only take images.
+ * and a lossless PNG (a sheet for multiple parts) for apps that only take images.
  */
 export async function copyMessage(canvases: HTMLCanvasElement | HTMLCanvasElement[], link: string, openLink: string | null = null, credential: 'passphrase' | 'passcode' = 'passphrase'): Promise<void> {
   if (!navigator.clipboard || typeof ClipboardItem === 'undefined') {
     throw new Error('Copying needs https or localhost. Use Download instead.');
   }
   const list = Array.isArray(canvases) ? canvases : [canvases];
-  const blobs = await Promise.all(list.map(canvasToBlob));
-  const urls = await Promise.all(
+  const many = list.length > 1;
+  const png = many ? canvasToBlob(rgbaToCanvas(encodeImageSheet(list.map((canvas) => ({
+    width: canvas.width, height: canvas.height,
+    data: canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data,
+  }))))) : canvasToBlob(list[0]);
+  const urls = Promise.all(list.map(canvasToBlob)).then((blobs) => Promise.all(
     blobs.map(
       (png) =>
         new Promise<string>((res, rej) => {
@@ -87,21 +92,21 @@ export async function copyMessage(canvases: HTMLCanvasElement | HTMLCanvasElemen
           r.readAsDataURL(png);
         }),
     ),
-  );
-  const many = list.length > 1;
+  ));
   const what = many ? `the ${list.length} images below, in order` : 'the image below';
   // For email clients that do not show images or run scripts: a link that opens the site with the secret already loaded.
   const direct = openLink ? ` Or open this link, which loads the secret for you: ${openLink}` : '';
   const text = `I sent you a secret. Open ${link} , add ${many ? 'all the images' : 'the image'} there (paste or drop ${many ? 'them' : 'it'}) and enter the ${credential} I gave you separately.${direct}`;
-  const html =
+  const html = urls.then((urls) => new Blob([
     `<p>I sent you a secret. Open <a href="${link}">${link}</a>, add ${what} there (paste or save and drop ${many ? 'them' : 'it'}) and enter the ${credential} I gave you separately.</p>` +
     (openLink ? `<p>Or <a href="${openLink}">open the secret directly</a>: the site loads it for you and you only type the ${credential}.</p>` : '') +
-    urls.map((u, i) => `<p><img src="${u}" alt="Secret image ${i + 1} of ${list.length}" width="${Math.min(list[i].width, 480)}"></p>`).join('');
-  const item: Record<string, Blob> = {
-    'text/html': new Blob([html], { type: 'text/html' }),
+    urls.map((u, i) => `<p><img src="${u}" alt="Secret image ${i + 1} of ${list.length}" width="${Math.min(list[i].width, 480)}"></p>`).join(''),
+  ], { type: 'text/html' }));
+  const item: Record<string, Blob | Promise<Blob>> = {
+    'image/png': png,
+    'text/html': html,
     'text/plain': new Blob([text], { type: 'text/plain' }),
   };
-  if (!many) item['image/png'] = blobs[0];
   await navigator.clipboard.write([new ClipboardItem(item)]);
 }
 

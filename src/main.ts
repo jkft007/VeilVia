@@ -11,6 +11,7 @@ import { MAX_PARTS, MODE_CODEART, MODE_DCT, MODE_FAKEQR, MODE_MICRODOT, MODE_QR,
 import { assemble, splitPacket } from './split';
 import { extract } from './stego';
 import { blobToRgba, compressSecretImage, copyImage, copyMessage, download, generateCover, rgbaToCanvas } from './imageio';
+import { decodeImageSheet } from './imagesheet';
 import { idToStyle, NO_ANIM, styleToId, STYLES } from './reveal-styles';
 import type { RevealHandle } from './reveal-anim';
 import { startScanner, type Scanner } from './camera';
@@ -672,7 +673,9 @@ $('btn-create').onclick = async () => {
     if (simple) {
       try {
         await copyMessage(outs, siteBase() + '#reveal', outs.length === 1 ? openLink : null, outputCredential);
-        setStatus(status, `Copied ${frames.length > 1 ? `all ${frames.length} images` : 'the image'} and reveal link. Paste into your message; share the passcode separately.`);
+        setStatus(status, frames.length > 1
+          ? `Copied all ${frames.length} images and reveal link. Image-only apps paste one lossless sheet containing every part. Send it as the original PNG without resizing; Reveal unpacks it automatically. Share the passcode separately.`
+          : 'Copied the image and reveal link. Paste into your message; share the passcode separately.');
       } catch {
         setStatus(status, 'Image created, but automatic copying was blocked or is unavailable. Press Copy message below, or download the image and send the reveal link separately.', true);
       }
@@ -702,7 +705,7 @@ $('btn-copy-msg').onclick = async () => {
     setStatus(
       $('hide-status'),
       outs.length > 1
-        ? `Message copied with all ${outs.length} images: paste it into an email. Chat apps may only take one image, so use each part's Copy button there.`
+        ? `Message copied with all ${outs.length} images. Image-only apps paste one lossless sheet containing every part. Send it as the original PNG without resizing; Reveal unpacks it automatically. If images are stripped, use each part's Copy button or download the PNGs.`
         : 'Message copied: paste it into an email or chat. If an app only takes the image, paste the link separately.',
     );
   } catch (e) {
@@ -832,7 +835,7 @@ function resetScan() {
 }
 
 function addImage(rgba: Rgba) {
-  images.push({ id: nextId++, rgba });
+  for (const part of decodeImageSheet(rgba) ?? [rgba]) images.push({ id: nextId++, rgba: part });
   renderTray();
   setStatus($('reveal-status'), '');
   showTab('reveal');

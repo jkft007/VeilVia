@@ -4,6 +4,7 @@ import { openPayload, sealPayload } from '../src/crypto';
 import { decodeCodeArt, encodeCodeArt } from '../src/codeart';
 import { decodeFakeQr, decodePlainQr, encodeFakeQr, encodePlainQr } from '../src/qrmodes';
 import { MODE_CODEART, MODE_FAKEQR, MODE_QR, parsePart } from '../src/packet';
+import { decodeImageSheet, encodeImageSheet } from '../src/imagesheet';
 
 const bytes = (n: number, seed = 1) => {
   const out = new Uint8Array(n);
@@ -53,6 +54,19 @@ describe('split / assemble', () => {
 });
 
 describe('split through real image styles', () => {
+  it('recovers all encrypted parts from a single clipboard sheet', async () => {
+    const data = bytes(2400, 9);
+    const packet = await sealPayload({ kind: 'file', name: 'sheet.bin', data }, 'pw', MODE_CODEART);
+    const parts = splitPacket(packet, 700).map((frame) => encodeCodeArt(frame));
+    const recovered = decodeImageSheet(encodeImageSheet(parts))!;
+    const assembled = assemble(recovered.map(decodeCodeArt));
+    expect(assembled.state).toBe('complete');
+    if (assembled.state === 'complete') {
+      const out = await openPayload(assembled.packet, 'pw');
+      expect(out.kind === 'file' && out.data).toEqual(data);
+    }
+  });
+
   it('code art: a 7 KB file over several images', async () => {
     const data = bytes(7000, 4);
     const packet = await sealPayload({ kind: 'file', name: 'doc.pdf', data }, 'pw', MODE_CODEART);
