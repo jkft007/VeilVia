@@ -1118,6 +1118,7 @@ async function decodeImage(img: Rgba, pass: string, pkPasses: string[] = []): Pr
     ]),
   ];
   for (const [fn, mode] of attempts) {
+    await sleep(0); // let progress paint between synchronous decoding methods
     try {
       const found = await fn();
       const frame = found instanceof Uint8Array ? found : found.frame;
@@ -1144,39 +1145,57 @@ $('btn-passkey').onclick = async () => {
 };
 
 $('btn-reveal').onclick = async () => {
+  const btn = $<HTMLButtonElement>('btn-reveal');
+  if (btn.disabled) return;
   const status = $('reveal-status');
   const pass = $<HTMLInputElement>('pass2').value || passkeyPass; // the passkey's passphrase is used once
   passkeyPass = '';
   if (!images.length) return setStatus(status, 'Paste or choose the image first.', true);
   if (!pass) return setStatus(status, 'Enter the passphrase.', true);
-  const fp = await fingerprint(images.map((i) => i.rgba));
-  const lock = checkLock(attemptStore, fp);
-  if (lock.locked) return showLockout(lock.waitMs);
-
-  clearResult();
-  const revealToken = vanishToken;
-  const btn = $<HTMLButtonElement>('btn-reveal');
+  const revealImages = images.slice();
+  const progress = $<HTMLProgressElement>('reveal-progress-bar');
+  const started = Date.now();
   btn.disabled = true;
-  setStatus(status, images.length > 1 ? `Decoding ${images.length} images…` : 'Decoding…');
+  btn.textContent = 'Revealing…';
+  btn.setAttribute('aria-busy', 'true');
+  $('reveal-progress').hidden = false;
+  progress.removeAttribute('value');
+  const elapsed = () => { $('reveal-elapsed').textContent = `Still working · ${Math.floor((Date.now() - started) / 1000)} s elapsed`; };
+  elapsed();
+  const progressTimer = window.setInterval(elapsed, 1000);
+  setStatus(status, `Checking ${revealImages.length} image${revealImages.length > 1 ? 's' : ''}…`);
+  let fp: string | undefined;
   try {
+    await sleep(30);
+    fp = await fingerprint(revealImages.map((i) => i.rgba));
+    const lock = checkLock(attemptStore, fp);
+    if (lock.locked) return showLockout(lock.waitMs);
+    clearResult();
+    const revealToken = vanishToken;
     const frames: Uint8Array[] = [];
     let mode: 'codeart' | 'stego' = 'codeart';
     let unreadable = 0;
     let openPass = pass;
     const pkPasses = storedPublicKeys().map(photoPassFor);
-    for (const im of images) {
+    progress.max = revealImages.length;
+    progress.value = 0;
+    for (const [index, im] of revealImages.entries()) {
+      setStatus(status, `Decoding image ${index + 1} of ${revealImages.length}…`);
       const r = await decodeImage(im.rgba, pass, pkPasses);
       if (r) {
         frames.push(r.frame);
         mode = r.mode;
         if (r.pass !== pass) openPass = r.pass;
       } else unreadable++;
+      progress.value = index + 1;
     }
+    setStatus(status, 'Assembling decoded parts…');
+    await sleep(0);
     const asm = assemble(frames);
     const skipped = unreadable ? ` ${unreadable} image${unreadable > 1 ? 's' : ''} could not be read.` : '';
     if (asm.state === 'none') {
       throw new NoSecretError(
-        images.length > 1
+        revealImages.length > 1
           ? 'No hidden secret found in these images. They may have been cropped, recompressed or resized by the app they travelled through, or the passphrase may be wrong.'
           : 'No hidden secret found in this image. It may have been cropped, recompressed or resized by the app it travelled through.',
       );
@@ -1188,6 +1207,9 @@ $('btn-reveal').onclick = async () => {
     }
     if (asm.state === 'corrupt') throw new Error('The parts do not fit together (damaged, or from different secrets). Remove all images and add them again.');
 
+    setStatus(status, 'Decrypting and checking the secret…');
+    progress.removeAttribute('value');
+    await sleep(0);
     // The animation code is loaded now, while the key is derived, so it is ready by the time the secret opens. If it
     // cannot be fetched (offline), the secret is simply shown without the animation.
     const animModule = import('./reveal-anim').catch(() => null);
@@ -1218,7 +1240,7 @@ $('btn-reveal').onclick = async () => {
     $('tab-read').focus();
     $('stage-wrap').hidden = false;
     $<HTMLTextAreaElement>('plain').value = '';
-    const source = rgbaToCanvas(images[images.length - 1].rgba);
+    const source = rgbaToCanvas(revealImages[revealImages.length - 1].rgba);
     const anim = await animModule;
     if (revealToken !== vanishToken) return;
     if (payload.anim === NO_ANIM) {
@@ -1264,7 +1286,7 @@ $('btn-reveal').onclick = async () => {
   } catch (e) {
     showTab('reveal');
     const countsAsGuess = e instanceof WrongPassphraseError || e instanceof NoSecretError;
-    if (e instanceof ExpiredError) recordSuccess(attemptStore, fp); // the passphrase was right, so it is not a guess
+    if (e instanceof ExpiredError && fp) recordSuccess(attemptStore, fp); // the passphrase was right, so it is not a guess
     if (e instanceof WrongPassphraseError) {
       const card = $('panel-reveal');
       card.classList.remove('shake');
@@ -1272,11 +1294,16 @@ $('btn-reveal').onclick = async () => {
       card.classList.add('shake');
     }
     setStatus(status, (e as Error).message, true);
-    if (countsAsGuess) {
+    if (countsAsGuess && fp) {
       const after = recordFailure(attemptStore, fp);
       if (after.locked) showLockout(after.waitMs);
     }
   } finally {
+    clearInterval(progressTimer);
+    $('reveal-progress').hidden = true;
+    $('reveal-elapsed').textContent = '';
+    btn.textContent = 'Reveal';
+    btn.setAttribute('aria-busy', 'false');
     btn.disabled = false;
   }
 };

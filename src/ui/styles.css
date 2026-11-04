@@ -267,6 +267,7 @@ legend { padding: 0 6px; color: var(--text-primary); font-weight: 550; }
 #btn-create { margin-top: 18px; }
 .status { min-height: 1.45em; margin-top: 10px; color: var(--text-secondary); font-size: 14px; }
 .status.error { color: var(--critical); }
+#reveal-progress-bar { width: 100%; accent-color: var(--signal-violet); }
 .status.success, .status.ok { color: var(--verified); }
 .warn { margin-top: 12px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--signal-violet) 35%, var(--border)); border-radius: var(--radius-control); background: var(--warn-bg); color: var(--warn-text); font-size: 14px; }
 
