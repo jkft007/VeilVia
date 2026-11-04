@@ -144,7 +144,18 @@ for (const ev of ['change', 'input']) {
   dst.append(auto);
   for (const o of $<HTMLSelectElement>('anim-style').options) {
     if (o.value !== 'auto') dst.append(new Option(o.textContent ?? o.value, o.value));
+    $('read-anim-style').append(new Option(o.textContent ?? o.value, o.value));
   }
+}
+for (const [from, to] of [['anim-style', 'read-anim-style'], ['read-anim-style', 'anim-style']]) {
+  $(from).addEventListener('change', () => {
+    $<HTMLSelectElement>(to).value = $<HTMLSelectElement>(from).value;
+  });
+}
+for (const [from, to] of [['chk-motion', 'chk-read-motion'], ['chk-read-motion', 'chk-motion']]) {
+  $(from).addEventListener('change', () => {
+    $<HTMLInputElement>(to).checked = $<HTMLInputElement>(from).checked;
+  });
 }
 
 $('pass-toggle').onclick = () => {
@@ -678,6 +689,7 @@ interface Loaded {
 let images: Loaded[] = [];
 let nextId = 1;
 let handle: RevealHandle | null = null;
+let replayReveal: (() => Promise<void>) | null = null;
 let clearTimer: number | undefined;
 // frames the camera has read so far (so it knows when a split set is complete)
 let scannedFrames: Uint8Array[] = [];
@@ -952,8 +964,27 @@ $('btn-copy-img').onclick = async () => {
 // When the reading time runs out the revealed text on the stage goes up in a puff of smoke and a vortex sucks it in; the
 // extracted text and any picture are swallowed by the vortex too, and then everything is cleared. "Clear now" (and a new reveal) still clears at once.
 let vanishToken = 0;
+function stopRevealReplay() {
+  replayReveal = null;
+  $('read-animation').hidden = true;
+  handle?.skip();
+  handle = null;
+}
+
+$('btn-read-reveal').onclick = async () => {
+  if (!replayReveal) return;
+  const btn = $<HTMLButtonElement>('btn-read-reveal');
+  btn.disabled = true;
+  try {
+    await replayReveal();
+  } finally {
+    btn.disabled = false;
+  }
+};
+
 async function vanishAndClear() {
   clearInterval(clearTimer);
+  stopRevealReplay();
   if (reducedMotion()) return clearResult();
   const mine = ++vanishToken;
   stopSpeaking(); // the time is up: the voice stops too
@@ -973,6 +1004,7 @@ async function vanishAndClear() {
 
 function clearResult() {
   vanishToken++; // stops a vanish that is still running
+  stopRevealReplay();
   stopSpeaking();
   setSpeaking(false);
   $<HTMLCanvasElement>('stage').dataset.wally = ''; // and the doodle left behind by the last one
@@ -993,7 +1025,6 @@ function clearResult() {
   $('sender-status').hidden = true;
   $('read-empty').hidden = false;
   setStatus($('read-status'), '');
-  handle?.skip();
 }
 $('btn-clear').onclick = clearResult;
 $('btn-skip').onclick = () => handle?.skip();
@@ -1083,6 +1114,7 @@ $('btn-reveal').onclick = async () => {
   if (lock.locked) return showLockout(lock.waitMs);
 
   clearResult();
+  const revealToken = vanishToken;
   const btn = $<HTMLButtonElement>('btn-reveal');
   btn.disabled = true;
   setStatus(status, images.length > 1 ? `Decoding ${images.length} images…` : 'Decoding…');
@@ -1132,6 +1164,7 @@ $('btn-reveal').onclick = async () => {
     const expectedSender = await getExpectedSender();
     const payload = await openPayload(asm.packet, info.slots ? pass : openPass, Date.now(), identities, expectedSender);
     const sender = await senderStatus(payload.sender, await listContacts().catch(() => []));
+    if (revealToken !== vanishToken) return;
     const senderNote = $('sender-status');
     senderNote.textContent = sender.message;
     senderNote.className = sender.trusted ? 'status' : 'warn';
@@ -1146,15 +1179,25 @@ $('btn-reveal').onclick = async () => {
     $('stage-wrap').hidden = false;
     $<HTMLTextAreaElement>('plain').value = '';
     const source = rgbaToCanvas(images[images.length - 1].rgba);
-    // A manual choice wins; on Auto use the sender's stored choice, else playReveal picks at random.
-    const pick = $<HTMLSelectElement>('anim-style').value;
-    const style = STYLES.find((s) => s === pick) ?? idToStyle(payload.anim);
     const anim = await animModule;
+    if (revealToken !== vanishToken) return;
     if (payload.anim === NO_ANIM) {
       $('stage-wrap').hidden = true; // the sender asked for no animation: just the message
     } else if (anim) {
-      handle = anim.playReveal({ canvas: $<HTMLCanvasElement>('stage'), source, text, mode, reduceMotion: reducedMotion(), style });
-      await handle.done;
+      const play = async () => {
+        if (revealToken !== vanishToken) return;
+        // A manual choice wins; Auto uses the sender's choice, or picks at random.
+        const pick = $<HTMLSelectElement>('anim-style').value;
+        const style = STYLES.find((s) => s === pick) ?? idToStyle(payload.anim);
+        handle = anim.playReveal({ canvas: $<HTMLCanvasElement>('stage'), source, text, mode, reduceMotion: reducedMotion(), style });
+        await handle.done;
+      };
+      await play();
+      if (revealToken !== vanishToken) return;
+      replayReveal = play;
+      $<HTMLSelectElement>('read-anim-style').value = $<HTMLSelectElement>('anim-style').value;
+      $<HTMLInputElement>('chk-read-motion').checked = $<HTMLInputElement>('chk-motion').checked;
+      $('read-animation').hidden = false;
     }
     showResult(payload);
     $('result').hidden = false;
