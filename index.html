@@ -6,7 +6,7 @@
     <title>VeilVia messaging</title>
     <link rel="stylesheet" href="/src/ui/styles.css" />
   </head>
-  <body>
+  <body class="simple-send">
     <main>
       <header>
         <div class="header-btns">
@@ -14,8 +14,9 @@
         </div>
         <h1>VeilVia</h1>
         <p class="brand-line">The concealed path.</p>
-        <p>Turn any text into an image you can paste into a message or email. Only someone with the passphrase can turn it back. Everything happens in your browser: nothing is uploaded.</p>
-        <p class="hint" id="outlook-note">Using Outlook? <a href="outlook/manifest.xml" download="manifest.xml">Download the Outlook add-in manifest</a> · <button id="outlook-how" class="link" type="button">how to install it</button></p>
+        <p>Send text, a file or a picture as an encrypted image. Everything stays in your browser: nothing is uploaded.</p>
+        <p class="hint advanced-only" id="outlook-note">Using Outlook? <a href="outlook/manifest.xml" download="manifest.xml">Download the Outlook add-in manifest</a> · <button id="outlook-how" class="link" type="button">how to install it</button></p>
+        <button id="experience-toggle" class="ghost small" type="button" aria-pressed="false">Advanced user</button>
       </header>
 
       <div class="tabs" role="tablist">
@@ -27,13 +28,14 @@
       <section id="panel-hide" class="card" role="tabpanel">
         <div class="seg" role="radiogroup" aria-label="What to hide">
           <label><input type="radio" name="kind" value="text" checked /> Text</label>
-          <label><input type="radio" name="kind" value="file" /> File or document</label>
+          <label><input type="radio" name="kind" value="file" /> File</label>
+          <label><input type="radio" name="kind" value="image" /> Image</label>
         </div>
 
         <div id="text-row">
           <label for="secret">Secret text</label>
           <textarea id="secret" rows="5" placeholder="Anything: a password, a phrase, a note…" spellcheck="false"></textarea>
-          <div class="row ocr-row">
+          <div class="row ocr-row advanced-only">
             <span class="hint">Or read the text from a picture:</span>
             <button id="btn-ocr-cam" class="ghost small" type="button">Use camera</button>
             <label class="btn-like" for="ocr-file">Choose image</label>
@@ -54,7 +56,7 @@
         </div>
 
         <div id="file-row" hidden>
-          <label for="secret-file">File to hide <span class="hint">(PDF, Word, a key file, a zip, a picture, anything)</span></label>
+          <label for="secret-file" id="secret-file-label">File to hide</label>
           <input id="secret-file" type="file" />
           <div class="row">
             <button id="btn-paste-secret" class="ghost small" type="button">Paste an image from the clipboard</button>
@@ -63,8 +65,16 @@
           <div id="file-info" class="hint"></div>
           <div id="file-warn" class="warn" hidden></div>
         </div>
-        <div id="limit-hint" class="hint"></div>
+        <div id="limit-hint" class="hint advanced-only"></div>
 
+        <div class="simple-only">
+          <label for="simple-passcode">Recipient passcode</label>
+          <input id="simple-passcode" type="password" autocomplete="off" spellcheck="false" aria-describedby="simple-code-help simple-code-note" />
+          <p id="simple-code-help" class="hint">We generate a strong passphrase automatically. Your passcode lets the recipient unlock the secret without typing it. Use at least five unrelated words, not a short PIN, and share the passcode separately. Protection is only as strong as your passcode.</p>
+          <div id="simple-code-note" class="hint"></div>
+        </div>
+
+        <div class="advanced-only">
         <label for="pass">Passphrase <span class="hint" id="pass-hint">(send it to your recipient a different way)</span></label>
         <div class="row">
           <input id="pass" type="password" autocomplete="off" spellcheck="false" />
@@ -74,8 +84,9 @@
         <div class="meter"><i id="pass-meter"></i></div>
         <div id="pass-note" class="hint"></div>
         <label class="check" id="weak-row" hidden><input id="chk-weak" type="checkbox" /> Use this weak passphrase anyway</label>
+        </div>
 
-        <details class="more" id="to-keys">
+        <details class="more advanced-only" id="to-keys">
           <summary>Send to a public key instead <span class="hint" id="to-summary">(none)</span></summary>
           <p class="hint">Lock this to one or more people's <b>public keys</b>. Nobody has to share a passphrase: only the owner of a matching private key can open it. You can still add a passphrase above as a second way in. Works with every image style except fake QR codes; for photos the hidden position comes from the recipient's public key, so it hides the message less secretly than a passphrase would.</p>
           <div class="row"><button id="to-manage" class="ghost small" type="button">Manage my keys and contacts</button></div>
@@ -95,17 +106,7 @@
           <div id="to-status" class="status" role="status"></div>
         </details>
 
-        <details class="more" id="sign-options">
-          <summary>Sign as a sender <span class="hint">(optional)</span></summary>
-          <p class="hint">An Ed25519 signature proves that the holder of a signing key sent this packet. Recipients must check your signing fingerprint through a trusted channel to know it is you. Signing keys are separate from encryption keys.</p>
-          <label for="sign-key">Signing key</label>
-          <select id="sign-key"><option value="">Do not sign</option></select>
-          <label for="sign-pass">Signing key's passphrase</label>
-          <input id="sign-pass" type="password" autocomplete="off" spellcheck="false" />
-          <button id="sign-manage" class="ghost small" type="button">Make or manage signing keys</button>
-        </details>
-
-        <label for="mode">Image style</label>
+        <label for="mode">Packaging</label>
         <select id="mode">
           <option value="codeart" selected>Code art</option>
           <option value="qr">QR code</option>
@@ -119,7 +120,7 @@
           <input id="decoy" type="text" value="https://www.wikipedia.org" spellcheck="false" />
         </div>
 
-        <div id="photo-opts" hidden>
+        <div id="photo-opts" class="advanced-only" hidden>
           <label for="photo-kind">Photo method</label>
           <select id="photo-kind">
             <option value="dct">Survives JPEG recompression (recommended, up to a few KB, no resizing or cropping)</option>
@@ -137,14 +138,24 @@
           </div>
         </div>
 
-        <details class="more" id="multi" hidden>
+        <details class="more" id="sign-options">
+          <summary>Sign as a sender <span class="hint">(optional)</span></summary>
+          <p class="hint">An Ed25519 signature proves that the holder of a signing key sent this packet. Recipients must check your signing fingerprint through a trusted channel to know it is you. Signing keys are separate from encryption keys.</p>
+          <label for="sign-key">Signing key</label>
+          <select id="sign-key"><option value="">Do not sign</option></select>
+          <label for="sign-pass">Signing key's passphrase</label>
+          <input id="sign-pass" type="password" autocomplete="off" spellcheck="false" />
+          <button id="sign-manage" class="ghost small" type="button">Make or manage signing keys</button>
+        </details>
+
+        <details class="more advanced-only" id="multi" hidden>
           <summary>More messages in this photo <span class="hint" id="multi-summary">(optional)</span></summary>
           <p class="hint">Hide up to 4 messages in one photo, each with its own passphrase (and optional pass code). Whoever has a passphrase or pass code sees only that message and cannot tell the others exist. Each message gets a share of the photo's room, so a bigger cover photo holds more. Not combined with splitting. The animation, reading time and expiry settings apply to every message.</p>
           <div id="extra-msgs"></div>
           <button id="btn-add-msg" class="ghost small" type="button">Add another message</button>
         </details>
 
-        <details class="more" id="more-opts">
+        <details class="more advanced-only" id="more-opts">
           <summary>More options <span class="hint" id="opt-summary">(defaults)</span></summary>
           <div class="opt-grid">
             <div title="Stored inside the encrypted image. The recipient sees it unless they pick another.">
@@ -186,15 +197,16 @@
           <p class="hint">The animation, reading time and expiry are stored inside the encrypted image. The recipient can shorten the reading time unless you lock it. Expiry is a courtesy enforced by this app, not a lock. A pass code is a second way in (the image key is stored in the image, locked by it), so the image is only as strong as the weaker of the passphrase and the pass code. Hover over a setting for details.</p>
         </details>
 
-        <label class="check split"><input id="chk-split" type="checkbox" checked /> Split across several images when it does not fit in one</label>
+        <label class="check split advanced-only"><input id="chk-split" type="checkbox" checked /> Split across several images when it does not fit in one</label>
 
-        <button id="btn-create" class="primary">Create image</button>
+        <button id="btn-create" class="primary">Create image &amp; copy</button>
         <div id="hide-status" class="status" role="status"></div>
 
         <div id="out-wrap" hidden>
           <canvas id="out-canvas"></canvas>
           <div id="parts-list" hidden></div>
           <div id="out-info" class="hint"></div>
+          <p class="hint">Reveal link: <a id="out-reveal-link" href="#reveal">Open VeilVia to reveal</a></p>
           <div class="row">
             <button id="btn-copy-msg" class="primary">Copy message (image + link)</button>
             <button id="btn-copy" class="ghost">Copy image only</button>

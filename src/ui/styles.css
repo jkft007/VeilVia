@@ -31,6 +31,9 @@
 
 * { box-sizing: border-box; }
 
+body.simple-send .advanced-only,
+body:not(.simple-send) .simple-only { display: none !important; }
+
 html { min-width: 320px; background: var(--canvas); }
 
 body {

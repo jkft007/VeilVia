@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ExpiredError, openPayload, openPacket, sealPayload, sealText, WrongPassphraseError } from '../src/crypto';
-import { crc32, HEADER_LEN_V2, MODE_CODEART, parsePacket, SLOT_LEN, VERSION_SLOT } from '../src/packet';
+import { crc32, HEADER_LEN_V2, MODE_CODEART, MODE_FAKEQR, parsePacket, SLOT_LEN, VERSION_SLOT } from '../src/packet';
+import { decodeFakeQr, encodeFakeQr } from '../src/qrmodes';
 import { assemble, splitPacket } from '../src/split';
 
 describe('recipient pass code (second key slot)', () => {
@@ -20,6 +21,15 @@ describe('recipient pass code (second key slot)', () => {
     expect(pkt[2]).toBe(2);
     expect(parsePacket(pkt).slot).toBeUndefined();
     expect(await openPacket(pkt, 'pw')).toBe('plain');
+  });
+
+  it('lets a recipient locate a fake QR with the passcode without knowing the generated passphrase', async () => {
+    const packet = await sealPayload({ kind: 'text', text: 'simple fake QR' }, 'random-generated-passphrase', MODE_FAKEQR, undefined, 0, 0, 'recipient passcode');
+    const image = await encodeFakeQr(packet, 'https://example.com', 'recipient passcode');
+    const decoded = await decodeFakeQr(image, 'recipient passcode');
+    expect(await openPacket(decoded, 'recipient passcode')).toBe('simple fake QR');
+    await expect(decodeFakeQr(image, 'wrong passcode')).rejects.toThrow();
+    await expect(openPacket(decoded, 'wrong passcode')).rejects.toBeInstanceOf(WrongPassphraseError);
   });
 
   it('carries files, the animation choice and the expiry through the pass-code path', async () => {

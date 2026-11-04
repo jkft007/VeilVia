@@ -34,6 +34,16 @@ function setStatus(el: HTMLElement, msg: string, error = false) {
   el.classList.toggle('error', error);
 }
 
+const simpleSend = () => document.body.classList.contains('simple-send');
+function setExperience(simple: boolean) {
+  document.body.classList.toggle('simple-send', simple);
+  $('experience-toggle').textContent = simple ? 'Advanced user' : 'Simple sending';
+  $('experience-toggle').setAttribute('aria-pressed', String(!simple));
+  $('btn-create').textContent = simple ? 'Create image & copy' : 'Create image';
+  syncModeUi();
+}
+$('experience-toggle').onclick = () => setExperience(!simpleSend());
+
 // ---- tabs -------------------------------------------------------------------
 function showTab(which: 'hide' | 'reveal' | 'keys') {
   for (const t of ['hide', 'reveal', 'keys'] as const) {
@@ -70,6 +80,12 @@ function updateMeter() {
   if (level !== 'weak') $<HTMLInputElement>('chk-weak').checked = false;
 }
 $('pass').addEventListener('input', updateMeter);
+$('simple-passcode').addEventListener('input', () => {
+  const { level } = strength($<HTMLInputElement>('simple-passcode').value);
+  $('simple-code-note').textContent = level === 'none' ? '' : level === 'weak'
+    ? 'Too easy to guess. Use at least five unrelated words, not a short PIN.'
+    : level === 'ok' ? 'Acceptable; longer is better.' : 'Strong.';
+});
 
 // The optional recipient pass code gets the same strength check: it opens the image just like the passphrase does.
 $('passcode').addEventListener('input', () => {
@@ -123,12 +139,16 @@ $('pass-toggle').onclick = () => {
   $('pass-toggle').textContent = i.type === 'password' ? 'Show' : 'Hide';
 };
 
-$('pass-gen').onclick = () => {
+function randomPassphrase() {
   const alphabet = 'abcdefghjkmnpqrstuvwxyz23456789'; // no look-alikes
   const bytes = crypto.getRandomValues(new Uint8Array(20));
   const chars = Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('');
+  return chars.match(/.{4}/g)!.join('-');
+}
+
+$('pass-gen').onclick = () => {
   const i = $<HTMLInputElement>('pass');
-  i.value = chars.match(/.{4}/g)!.join('-');
+  i.value = randomPassphrase();
   generatedPass = i.value;
   i.type = 'text';
   $('pass-toggle').textContent = 'Hide';
@@ -150,7 +170,7 @@ const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const RISKY_EXT = /\.(exe|msi|bat|cmd|com|scr|ps1|vbs|vbe|js|jse|jar|lnk|hta|dll|app|sh|apk|pif|reg)$/i;
 const fmt = (n: number) => (n < 1024 ? `${n} bytes` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`);
 const kindRadios = () => document.querySelectorAll<HTMLInputElement>('input[name=kind]');
-const currentKind = () => ([...kindRadios()].find((r) => r.checked)!.value as 'text' | 'file');
+const currentKind = () => ([...kindRadios()].find((r) => r.checked)!.value as 'text' | 'file' | 'image');
 
 /** This page's address without any fragment: what a plain QR's link points at. */
 const siteBase = () => location.origin + location.pathname;
@@ -171,15 +191,18 @@ function frameCapacity(cover?: Rgba): number {
     return lo;
   }
   const c = cover ?? { width: 1280, height: 848, data: new Uint8ClampedArray(0) };
-  return photoCapacity(photoKind(), c, currentPhotoLayout());
+  return photoCapacity(simpleSend() ? 'dct' : photoKind(), c, currentPhotoLayout());
 }
 
 const FRAMING = 70; // packet header, tag and file name
 
 function syncKindUi() {
-  const file = currentKind() === 'file';
+  const file = currentKind() !== 'text';
+  const image = currentKind() === 'image';
   $('text-row').hidden = file;
   $('file-row').hidden = !file;
+  $<HTMLInputElement>('secret-file').accept = image ? 'image/*,.heic,.heif' : '';
+  $('secret-file-label').textContent = image ? 'Image to hide' : 'File to hide';
   const hint = $('limit-hint');
   hint.hidden = !file;
   if (file) {
@@ -254,6 +277,7 @@ function readExtras(): ExtraRow[] {
 let pkPhotoCount = 0; // messages in a photo sent to public keys (one per way in), while it is being made
 function currentPhotoLayout() {
   if (currentMode() !== 'photo') return { nMsg: 1, nLoc: 0 };
+  if (simpleSend()) return { nMsg: 1, nLoc: 1 };
   if (pkPhotoCount > 0) return photoLayout(Array.from({ length: pkPhotoCount }, () => ({})));
   return photoLayout([{ passcode: $<HTMLInputElement>('passcode').value }, ...readExtras()]);
 }
@@ -356,6 +380,7 @@ $('btn-paste-cover').onclick = async () => {
 let outs: HTMLCanvasElement[] = [];
 /** A link that opens this site with the one image's encrypted data loaded; set for code art and QR only, and only when short enough for email. */
 let openLink: string | null = null;
+let outputCredential: 'passphrase' | 'passcode' = 'passphrase';
 const MAX_OPEN_LINK = 1900;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const partName = (i: number, n: number) => (n > 1 ? `secret-part-${i + 1}-of-${n}.png` : 'secret.png');
@@ -417,12 +442,16 @@ function showOutputs(imgs: Rgba[], packetLen: number) {
 }
 
 $('btn-create').onclick = async () => {
-  const pass = $<HTMLInputElement>('pass').value;
+  const simple = simpleSend();
+  const pass = simple ? randomPassphrase() : $<HTMLInputElement>('pass').value;
   const status = $('hide-status');
   let payload: Payload;
-  if (currentKind() === 'file') {
+  if (currentKind() !== 'text') {
     const f = $<HTMLInputElement>('secret-file').files?.[0];
     if (!pastedSecret && !f) return setStatus(status, 'Choose the file to hide, or paste an image.', true);
+    if (currentKind() === 'image' && f && !f.type.startsWith('image/') && !/\.(heic|heif)$/i.test(f.name)) {
+      return setStatus(status, 'Choose an image, or select File to hide another kind of file.', true);
+    }
     const size = pastedSecret?.data.length ?? f!.size;
     if (size > MAX_FILE_BYTES) return setStatus(status, `That file is too large (${fmt(size)}). The limit is ${fmt(MAX_FILE_BYTES)}.`, true);
     payload = pastedSecret ? { kind: 'file', name: pastedSecret.name, data: pastedSecret.data } : { kind: 'file', name: f!.name, data: new Uint8Array(await f!.arrayBuffer()) };
@@ -431,20 +460,24 @@ $('btn-create').onclick = async () => {
     if (!text) return setStatus(status, 'Enter some text to hide.', true);
     payload = { kind: 'text', text };
   }
-  const recips = await getRecipients();
+  const recips = simple ? [] : await getRecipients();
   if (!pass && !recips.length) return setStatus(status, 'Enter a passphrase (or press Generate), or add a public key to send to.', true);
-  if (passStrength().level === 'weak' && !$<HTMLInputElement>('chk-weak').checked) {
+  if (!simple && passStrength().level === 'weak' && !$<HTMLInputElement>('chk-weak').checked) {
     return setStatus(status, 'That passphrase is too easy to guess. Press Generate for a strong one, make it longer, or tick "Use it anyway".', true);
   }
 
-  const passcode = $<HTMLInputElement>('passcode').value;
-  if (passcode && strength(passcode).level === 'weak' && !$<HTMLInputElement>('chk-weak-code').checked) {
+  const passcode = $<HTMLInputElement>(simple ? 'simple-passcode' : 'passcode').value;
+  if (simple && !passcode) return setStatus(status, 'Enter a passcode to share separately with your recipient.', true);
+  if (simple && strength(passcode).level === 'weak') {
+    return setStatus(status, 'That passcode is too easy to guess. Use at least five unrelated words, not a short PIN.', true);
+  }
+  if (!simple && passcode && strength(passcode).level === 'weak' && !$<HTMLInputElement>('chk-weak-code').checked) {
     $<HTMLDetailsElement>('more-opts').open = true; // the weak-pass-code tick box lives in there
     return setStatus(status, 'That pass code is too easy to guess. Make it longer, or tick "Use this weak pass code anyway".', true);
   }
 
-  // A fake QR hides its data at positions derived from the passphrase, so a pass code could not even find it.
-  if (passcode && currentMode() === 'fakeqr') {
+  // Advanced fake QR uses the main passphrase for positions. Simple sending uses the passcode for positions and its key slot.
+  if (!simple && passcode && currentMode() === 'fakeqr') {
     $<HTMLDetailsElement>('more-opts').open = true;
     return setStatus(status, 'A recipient pass code does not work with fake QR codes, whose data can only be found with the main passphrase. Clear the pass code or choose another style.', true);
   }
@@ -463,7 +496,7 @@ $('btn-create').onclick = async () => {
   }
 
   // Extra messages in the same photo, each with its own passphrase and optional pass code.
-  const extraRows = currentMode() === 'photo' ? readExtras() : [];
+  const extraRows = !simple && currentMode() === 'photo' ? readExtras() : [];
   for (const [i, x] of extraRows.entries()) {
     const label = `Extra message ${i + 1}`;
     if (!x.text || !x.pass) {
@@ -480,6 +513,7 @@ $('btn-create').onclick = async () => {
 
   const btn = $<HTMLButtonElement>('btn-create');
   btn.disabled = true;
+  $<HTMLButtonElement>('experience-toggle').disabled = true;
   setStatus(status, 'Encrypting… (deriving a memory-hard key takes about a second)');
   await sleep(30); // let the status paint before the heavy work
   $('out-wrap').hidden = true;
@@ -489,15 +523,15 @@ $('btn-create').onclick = async () => {
   try {
     const signer = await getSigner();
     const mode = currentMode();
-    const kind = photoKind();
+    const kind = simple ? 'dct' : photoKind();
     const packetMode = { codeart: MODE_CODEART, qr: MODE_QR, fakeqr: MODE_FAKEQR, photo: kind === 'dct' ? MODE_DCT : MODE_STEGO }[mode];
-    const chosen = STYLES.find((s) => s === $<HTMLSelectElement>('anim-pick').value);
-    const readTime = Number($<HTMLSelectElement>('read-time').value); // the 60 s default is not stored
-    const readLocked = $<HTMLInputElement>('chk-lock-read-time').checked;
+    const chosen = !simple && STYLES.find((s) => s === $<HTMLSelectElement>('anim-pick').value);
+    const readTime = simple ? 60 : Number($<HTMLSelectElement>('read-time').value); // the 60 s default is not stored
+    const readLocked = simple || $<HTMLInputElement>('chk-lock-read-time').checked;
     const readSecs = readTime === 60 && !readLocked ? 0 : readTime;
-    const ttl = Number($<HTMLSelectElement>('expiry').value); // seconds, 0 = never
+    const ttl = simple ? 0 : Number($<HTMLSelectElement>('expiry').value); // seconds, 0 = never
     const expiresAt = ttl > 0 ? Math.floor(Date.now() / 1000) + ttl : 0;
-    const anim = $<HTMLInputElement>('chk-nonsense').checked ? NO_ANIM : chosen ? styleToId(chosen) : 0;
+    const anim = !simple && $<HTMLInputElement>('chk-nonsense').checked ? NO_ANIM : chosen ? styleToId(chosen) : 0;
     // A photo for public keys holds one message per way in (each recipient, and the passphrase if there is one), each placed
     // by a key the recipient can work out for themselves.
     let photoLead: PhotoMessage[] | undefined;
@@ -527,7 +561,7 @@ $('btn-create').onclick = async () => {
       }
     }
     const maxFrame = frameCapacity(cover ?? undefined);
-    const split = $<HTMLInputElement>('chk-split').checked && extras.length === 0 && !photoLead;
+    const split = (simple || $<HTMLInputElement>('chk-split').checked) && extras.length === 0 && !photoLead;
     if (!split && [packet, ...extras.map((x) => x.packet), ...(photoLead ?? []).map((x) => x.packet)].some((p) => p.length > maxFrame)) {
       throw new Error(`Too much data for one image (about ${fmt(Math.max(0, maxFrame - FRAMING))} is the most for this style). Turn on splitting, pick a roomier style, or hide less.`);
     }
@@ -537,7 +571,7 @@ $('btn-create').onclick = async () => {
     for (let i = 0; i < frames.length; i++) {
       setStatus(status, frames.length > 1 ? `Creating image ${i + 1} of ${frames.length}…` : 'Creating image…');
       await sleep(0); // let the status paint
-      imgs.push(await renderFrame(frames[i], mode, kind, pass, cover, passcode, i === 0 ? extras : [], i === 0 ? photoLead : undefined));
+      imgs.push(await renderFrame(frames[i], mode, kind, simple && mode === 'fakeqr' ? passcode : pass, cover, passcode, i === 0 ? extras : [], i === 0 ? photoLead : undefined));
     }
 
     const notes: string[] = [];
@@ -561,13 +595,26 @@ $('btn-create').onclick = async () => {
     warn.hidden = notes.length === 0;
 
     showOutputs(imgs, packet.length);
+    outputCredential = simple ? 'passcode' : 'passphrase';
+    $<HTMLAnchorElement>('out-reveal-link').href = siteBase() + '#reveal';
+    $('out-reveal-link').textContent = siteBase() + '#reveal';
     $('out-wrap').hidden = false;
-    setStatus(status, frames.length > 1 ? `Done: ${frames.length} images. Copy the message or download them all.` : 'Done. Copy it into your message, or download it.');
+    if (simple) {
+      try {
+        await copyMessage(outs, siteBase() + '#reveal', outs.length === 1 ? openLink : null, outputCredential);
+        setStatus(status, `Copied ${frames.length > 1 ? `all ${frames.length} images` : 'the image'} and reveal link. Paste into your message; share the passcode separately.`);
+      } catch {
+        setStatus(status, 'Image created, but automatic copying was blocked or is unavailable. Press Copy message below, or download the image and send the reveal link separately.', true);
+      }
+    } else {
+      setStatus(status, frames.length > 1 ? `Done: ${frames.length} images. Copy the message or download them all.` : 'Done. Copy it into your message, or download it.');
+    }
   } catch (e) {
     setStatus(status, (e as Error).message, true);
   } finally {
     pkPhotoCount = 0;
     btn.disabled = false;
+    $<HTMLButtonElement>('experience-toggle').disabled = false;
   }
 };
 
@@ -581,7 +628,7 @@ $('btn-copy').onclick = async () => {
 };
 $('btn-copy-msg').onclick = async () => {
   try {
-    await copyMessage(outs, location.origin + location.pathname + '#reveal', outs.length === 1 ? openLink : null);
+    await copyMessage(outs, location.origin + location.pathname + '#reveal', outs.length === 1 ? openLink : null, outputCredential);
     setStatus(
       $('hide-status'),
       outs.length > 1
@@ -740,7 +787,7 @@ document.addEventListener('paste', (e) => {
     e.preventDefault();
     if (!$('panel-hide').hidden) {
       // Hiding a file: the pasted picture is the secret itself.
-      if (currentKind() === 'file') {
+      if (currentKind() !== 'text') {
         setSecretImage(files[0]);
         return;
       }
@@ -1251,7 +1298,7 @@ if (location.hash === '#reveal' || location.hash.startsWith('#q=')) openFromHash
 window.addEventListener('hashchange', openFromHash);
 
 // Public keys: the keys section, the recipient picker, and links like #to=stpub1:… that fill in a recipient.
-initKeysUi({ siteBase, showHideTab: () => showTab('hide'), showKeysTab: () => showTab('keys') });
+initKeysUi({ siteBase, showHideTab: () => { setExperience(false); showTab('hide'); }, showKeysTab: () => showTab('keys') });
 void handleToHash(location.hash);
 window.addEventListener('hashchange', () => void handleToHash(location.hash));
 
@@ -1265,9 +1312,11 @@ $('help-close').onclick = () => helpDialog.close();
 // The guided tour (a separate chunk, fetched only when asked for) drives the page itself, slowly, with a demo secret.
 $('help-demo').onclick = async () => {
   helpDialog.close();
+  const wasSimple = simpleSend();
   try {
     const m = await import('./demo');
-    void m.runDemo({
+    setExperience(false);
+    await m.runDemo({
       showTab,
       outputToReveal: () => {
         const c = outs[0];
@@ -1286,6 +1335,8 @@ $('help-demo').onclick = async () => {
     });
   } catch {
     setStatus($('hide-status'), 'The demo could not be loaded (are you offline?).', true);
+  } finally {
+    setExperience(wasSimple);
   }
 };
 helpDialog.addEventListener('click', (e) => {

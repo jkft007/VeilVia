@@ -51,7 +51,7 @@ export async function copyImage(canvas: HTMLCanvasElement): Promise<void> {
  * Puts a ready-to-paste message on the clipboard: rich text (all images + the link), plain text,
  * and, when there is just one image, the PNG itself for apps that only take images.
  */
-export async function copyMessage(canvases: HTMLCanvasElement | HTMLCanvasElement[], link: string, openLink: string | null = null): Promise<void> {
+export async function copyMessage(canvases: HTMLCanvasElement | HTMLCanvasElement[], link: string, openLink: string | null = null, credential: 'passphrase' | 'passcode' = 'passphrase'): Promise<void> {
   if (!navigator.clipboard || typeof ClipboardItem === 'undefined') {
     throw new Error('Copying needs https or localhost. Use Download instead.');
   }
@@ -72,10 +72,10 @@ export async function copyMessage(canvases: HTMLCanvasElement | HTMLCanvasElemen
   const what = many ? `the ${list.length} images below, in order` : 'the image below';
   // For email clients that do not show images or run scripts: a link that opens the site with the secret already loaded.
   const direct = openLink ? ` Or open this link, which loads the secret for you: ${openLink}` : '';
-  const text = `I sent you a secret. Open ${link} , add ${many ? 'all the images' : 'the image'} there (paste or drop ${many ? 'them' : 'it'}) and enter the passphrase I gave you separately.${direct}`;
+  const text = `I sent you a secret. Open ${link} , add ${many ? 'all the images' : 'the image'} there (paste or drop ${many ? 'them' : 'it'}) and enter the ${credential} I gave you separately.${direct}`;
   const html =
-    `<p>I sent you a secret. Open <a href="${link}">${link}</a>, add ${what} there (paste or save and drop ${many ? 'them' : 'it'}) and enter the passphrase I gave you separately.</p>` +
-    (openLink ? `<p>Or <a href="${openLink}">open the secret directly</a>: the site loads it for you and you only type the passphrase.</p>` : '') +
+    `<p>I sent you a secret. Open <a href="${link}">${link}</a>, add ${what} there (paste or save and drop ${many ? 'them' : 'it'}) and enter the ${credential} I gave you separately.</p>` +
+    (openLink ? `<p>Or <a href="${openLink}">open the secret directly</a>: the site loads it for you and you only type the ${credential}.</p>` : '') +
     urls.map((u, i) => `<p><img src="${u}" alt="Secret image ${i + 1} of ${list.length}" width="${Math.min(list[i].width, 480)}"></p>`).join('');
   const item: Record<string, Blob> = {
     'text/html': new Blob([html], { type: 'text/html' }),

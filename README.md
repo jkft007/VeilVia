@@ -5,7 +5,15 @@ Turn any text into an image you can paste into a message or email. Only someone 
 The product name is **VeilVia**: [source](https://github.com/jkft007/VeilVia) and [live site](https://jkft007.github.io/VeilVia/).
 
 ## How to use
-**Sending** (Hide a secret tab)
+**Sending** (simple by default)
+1. Choose **Text**, **File** or **Image** and add the secret.
+2. Enter a **recipient passcode** (at least five unrelated words is a good starting point, not a short PIN). A strong passphrase is generated automatically; the passcode unlocks the secret without needing to share that generated passphrase. Security is limited by the passcode's strength.
+3. Pick the **packaging**: code art, QR code, fake QR code or hidden in a photo. Photos use the JPEG-safe method; choose your own cover or let the app generate one. Optionally select a sender signing key.
+4. Press **Create image & copy**. The image(s) and reveal link are copied automatically; paste into an email or chat and share the passcode separately. If the browser blocks copying, use **Copy message** or download the images and send the displayed reveal link. Large secrets are split automatically; send every image.
+
+**Advanced user** opens the full existing controls without clearing your text, file, packaging or signing choice. Simple sending ignores advanced recipients, extra messages and custom reveal settings; switching back restores those controls. Fake QR packaging in simple sending uses the recipient passcode to locate its hidden data as well as unlock the generated passphrase's key slot.
+
+**Sending with advanced controls**
 1. Type or paste your text (or choose a file, paste a picture, or read the text from a camera photo) and enter a passphrase, or press **Generate**.
 2. Pick an **image style**: code art, QR code, fake QR code, or hidden in a photo (JPEG-safe or lossless), and optionally your own cover photo.
 3. Optionally open **More options**: a reveal animation (one of 84), a reading time, an expiry from 1 minute to 30 days, and a recipient pass code. With the photo style, **More messages in this photo** adds up to 3 more messages, each with its own passphrase and optional pass code.
