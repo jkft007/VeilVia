@@ -8,7 +8,7 @@ The product name is **VeilVia**: [source](https://github.com/jkft007/VeilVia) an
 **Sending** (simple by default)
 1. Choose **Text**, **File** or **Image** and add the secret.
 2. Enter a **recipient passcode** (at least five unrelated words is a good starting point, not a short PIN). A strong passphrase is generated automatically; the passcode unlocks the secret without needing to share that generated passphrase. For short or weak codes, **Use this short or weak passcode anyway** appears and must be explicitly ticked (off by default). Security is limited by the passcode's strength; the generated passphrase does not protect against guessing a weak passcode.
-3. Pick the **packaging**: code art, QR code, fake QR code or hidden in a photo. Photos use the JPEG-safe method; choose your own cover or let the app generate one. Optionally select a sender signing key.
+3. Pick the **packaging**: code art, microdot, QR code, fake QR code or hidden in a photo. Photos use the JPEG-safe method; choose your own cover or let the app generate one. Microdots are compact greyscale stamps that need the original PNG. Optionally select a sender signing key.
 4. Press **Create image & copy**. The image(s) and reveal link are copied automatically; paste into an email or chat and share the passcode separately. If the browser blocks copying, use **Copy message** or download the images and send the displayed reveal link. Large secrets are split automatically; send every image.
 
 ### Where are the advanced controls?
@@ -19,7 +19,7 @@ The box then says **Advanced sending** and its button becomes **Simple sending**
 
 **Sending with advanced controls**
 1. Press **Advanced user**, choose **Text**, **File** or **Image**, add your secret and enter a passphrase, or press **Generate**. In Text mode you can also read text from a camera photo.
-2. Pick the **Packaging**: code art, QR code, fake QR code, or hidden in a photo (JPEG-safe or lossless), and optionally your own cover photo.
+2. Pick the **Packaging**: code art, microdot, QR code, fake QR code, or hidden in a photo (JPEG-safe or lossless), and optionally your own cover photo.
 3. Optionally open **More options**: a reveal animation (one of 84), a reading time, an expiry from 1 minute to 30 days, and a recipient pass code. With the photo style, **More messages in this photo** adds up to 3 more messages, each with its own passphrase and optional pass code.
 4. Press **Create image**, then **Copy message** (the image, a link to the site and, for code art and QR, a direct link to the secret) and paste it into an email or chat, or download the image. Give the passphrase to your recipient by a different route.
 
@@ -52,6 +52,7 @@ Public signing exposes the signing key to anyone who extracts the packet. Encryp
 
 ## Image styles
 - **Code art**: a colourful mosaic that survives JPEG compression, resizing and screenshots.
+- **Microdot**: a compact greyscale dot-matrix stamp using the same calibrated, error-corrected decoder as code art, with three-pixel dot cells. It is a smaller digital image, not an invisible mark or a physical microphotograph. Each stamp holds up to **1,000 encrypted bytes** (less user content after encryption, signing and settings); larger secrets are split when splitting is enabled. Works with text, files, images, passcodes, public-key recipients and both signature modes. Send the **original PNG with its white border** as a file or attachment: resizing, JPEG recompression, cropping, or printing and rescanning may destroy it. On **Reveal a secret**, paste, drop or choose the image; microdots cannot be read with the QR camera scanner. Copied messages include the reveal-page link, not a direct link containing the encrypted packet.
 - **QR code**: a standard QR holding a link to this page with the encrypted data in the part after `#` (which browsers never send to a server). Scan it with an ordinary phone camera and the page opens on the Reveal tab with the secret already loaded; the recipient only types the passphrase, and the address bar is tidied so the data does not stay in it. Best for short secrets (one QR holds roughly 1.6 KB of encrypted data). With several parts each QR opens its own page, so use **Scan QR with camera** inside the app for those. QR codes made by earlier versions (raw base64) still read. The link points at whichever site made the code, so codes made on a local test copy only work on that copy.
 - **Fake QR code**: scans as a decoy you choose (e.g. a web link). The real secret is hidden in the QR's error-correction budget and is only recovered with the passphrase.
 - **Hidden in a photo**:

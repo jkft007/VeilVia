@@ -1,4 +1,4 @@
-import { decodeCodeArt, encodeCodeArt, MAX_PACKET, type Rgba } from './codeart';
+import { decodeCodeArt, encodeCodeArt, encodeMicrodot, MAX_MICRODOT_PACKET, MAX_PACKET, type Rgba } from './codeart';
 import { cropTo8, extractDct, MAX_COVER_SIDE } from './dct';
 import { MAX_MESSAGES } from './lanes';
 import { findPhoto, hidePhoto, photoCapacity, photoLayout, type PhotoMessage } from './photo';
@@ -7,7 +7,7 @@ import { ExpiredError, NEVER_CLEAR, openPayload, sealPayload, WrongPassphraseErr
 import { encodedLength } from './ecc';
 import { byteCapacity } from './qr';
 import { fakeQrCapacity } from './qrmodes';
-import { MAX_PARTS, MODE_CODEART, MODE_DCT, MODE_FAKEQR, MODE_QR, MODE_STEGO, PART_OVERHEAD, parseFrame, parsePacket } from './packet';
+import { MAX_PARTS, MODE_CODEART, MODE_DCT, MODE_FAKEQR, MODE_MICRODOT, MODE_QR, MODE_STEGO, PART_OVERHEAD, parseFrame, parsePacket } from './packet';
 import { assemble, splitPacket } from './split';
 import { extract } from './stego';
 import { blobToRgba, copyImage, copyMessage, download, generateCover, rgbaToCanvas } from './imageio';
@@ -161,13 +161,14 @@ $('pass-gen').onclick = () => {
 };
 
 // ---- hide -------------------------------------------------------------------
-type Mode = 'codeart' | 'qr' | 'fakeqr' | 'photo';
+type Mode = 'codeart' | 'qr' | 'fakeqr' | 'photo' | 'microdot';
 const currentMode = () => $<HTMLSelectElement>('mode').value as Mode;
 const MODE_HELP: Record<Mode, string> = {
   codeart: 'A colourful mosaic. Survives JPEG compression, resizing and screenshots, so it works in nearly every app. Obviously not a normal picture.',
   qr: 'A standard QR code holding a link to this page with the encrypted data inside it. Scanning it with any phone camera opens the page with the secret loaded, ready for the passphrase. Best for short secrets.',
   fakeqr: 'Scans as a harmless decoy of your choice (like a web link). The real secret is hidden inside the QR image itself.',
   photo: 'Looks like an ordinary picture.',
+  microdot: 'A compact greyscale dot-pattern stamp. Keep the original PNG and its white border: resizing, cropping or JPEG recompression may destroy it. This is not an invisible mark or a camera-scannable QR code.',
 };
 const photoKind = () => $<HTMLSelectElement>('photo-kind').value as 'dct' | 'lsb';
 // ---- what to hide: text or a file ----------------------------------------------
@@ -184,6 +185,7 @@ const siteBase = () => location.origin + location.pathname;
 function frameCapacity(cover?: Rgba): number {
   const m = currentMode();
   if (m === 'codeart') return 3000; // keeps images a sensible size; larger secrets are split
+  if (m === 'microdot') return MAX_MICRODOT_PACKET;
   if (m === 'qr') return Math.floor((byteCapacity(30, 'M') - linkOverhead(siteBase())) / 4) * 3; // the link wraps base64, which expands by 4/3
   if (m === 'fakeqr') {
     let lo = 0;
@@ -392,6 +394,7 @@ const partName = (i: number, n: number) => (n > 1 ? `secret-part-${i + 1}-of-${n
 
 async function renderFrame(frame: Uint8Array, mode: Mode, kind: 'dct' | 'lsb', pass: string, cover: Rgba | null, passcode = '', extras: PhotoMessage[] = [], lead?: PhotoMessage[]): Promise<Rgba> {
   if (mode === 'codeart') return encodeCodeArt(frame);
+  if (mode === 'microdot') return encodeMicrodot(frame);
   if (mode === 'qr') return encodePlainQr(frame, siteBase());
   if (mode === 'fakeqr') {
     const decoy = $<HTMLInputElement>('decoy').value;
@@ -530,7 +533,7 @@ $('btn-create').onclick = async () => {
     const signatureVisibility = $<HTMLSelectElement>('sign-visibility').value === 'private' ? 'private' : 'public';
     const mode = currentMode();
     const kind = simple ? 'dct' : photoKind();
-    const packetMode = { codeart: MODE_CODEART, qr: MODE_QR, fakeqr: MODE_FAKEQR, photo: kind === 'dct' ? MODE_DCT : MODE_STEGO }[mode];
+    const packetMode = { codeart: MODE_CODEART, qr: MODE_QR, fakeqr: MODE_FAKEQR, microdot: MODE_MICRODOT, photo: kind === 'dct' ? MODE_DCT : MODE_STEGO }[mode];
     const chosen = !simple && STYLES.find((s) => s === $<HTMLSelectElement>('anim-pick').value);
     const readTime = simple ? 60 : Number($<HTMLSelectElement>('read-time').value); // the 60 s default is not stored
     const readLocked = simple || $<HTMLInputElement>('chk-lock-read-time').checked;
@@ -591,6 +594,7 @@ $('btn-create').onclick = async () => {
       if (packet.length > 8000 && frames.length === 1) notes.push('This is a large image. Some apps shrink big images, which can make it unreadable.');
     } else if (mode === 'qr') notes.push('Anyone can scan these QR codes, but they will only see encrypted gibberish without the passphrase.');
     else if (mode === 'fakeqr') notes.push('A phone scanner will show your decoy. Keep the images at their original size: cropping or heavy shrinking breaks the hidden data.');
+    else if (mode === 'microdot') notes.push('Microdot: send the original PNG as a file or attachment, keeping its white border. Resizing, cropping or JPEG recompression may destroy it. It is a compact dot stamp, not an invisible mark; reveal it by uploading or pasting the image, not with a QR scanner.');
     else if (kind === 'dct') notes.push('Survives normal JPEG recompression, but not cropping, rotating or heavy resizing. Photos are limited to 1280 px so most apps leave them alone.' + (cover && frames.length > 1 ? ' All parts reuse your cover photo; without one, each part gets its own generated picture.' : ''));
     else notes.push('Send these as original PNG files or attachments. Pasting inline in Gmail, WhatsApp, iMessage and most social apps usually recompresses images and destroys the hidden data. If in doubt, use the JPEG-safe method.');
     warn.textContent = notes.join(' ');

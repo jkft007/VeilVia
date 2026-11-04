@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import jpeg from 'jpeg-js';
 import { decodeBuffer, encodeBuffer } from '../src/ecc';
-import { openPacket, sealText, WrongPassphraseError } from '../src/crypto';
-import { decodeCodeArt, encodeCodeArt, type Rgba } from '../src/codeart';
+import { openPacket, openPayload, sealPayload, sealText, WrongPassphraseError } from '../src/crypto';
+import { decodeCodeArt, encodeCodeArt, encodeMicrodot, MAX_MICRODOT_PACKET, type Rgba } from '../src/codeart';
 import { embed, extract, stegoCapacity } from '../src/stego';
-import { MODE_CODEART, MODE_STEGO, parsePacket } from '../src/packet';
+import { MODE_CODEART, MODE_MICRODOT, MODE_STEGO, parsePacket } from '../src/packet';
+import { generateKeyPair, importIdentity } from '../src/pubkey';
+import { assemble, splitPacket } from '../src/split';
 
 const rnd = (n: number, seed = 1) => {
   const out = new Uint8Array(n);
@@ -87,6 +89,41 @@ describe('code-art', () => {
   it('rejects non-code images', () => {
     const noise = { width: 200, height: 200, data: new Uint8ClampedArray(rnd(200 * 200 * 4, 9)) };
     expect(() => decodeCodeArt(noise)).toThrow();
+  });
+});
+
+describe('microdot', () => {
+  it.each([1, MAX_MICRODOT_PACKET])('recovers all %i bytes from a compact greyscale stamp', (length) => {
+    const packet = rnd(length);
+    const image = encodeMicrodot(packet);
+    expect(decodeCodeArt(image)).toEqual(packet);
+    expect(image.width).toBeLessThan(encodeCodeArt(packet).width);
+    expect(image.data.every((value, i) => i % 4 === 3 || value === image.data[i - i % 4])).toBe(true);
+  });
+
+  it('unlocks encrypted text with the recipient passcode and rejects a wrong code', async () => {
+    const payload = { kind: 'text', text: 'A tiny private note' } as const;
+    const packet = await sealPayload(payload, 'generated passphrase', MODE_MICRODOT, undefined, 0, 0, 'recipient code');
+    const decoded = decodeCodeArt(encodeMicrodot(packet));
+    expect(parsePacket(decoded).mode).toBe(MODE_MICRODOT);
+    expect(await openPayload(decoded, 'recipient code')).toMatchObject(payload);
+    await expect(openPayload(decoded, 'wrong code')).rejects.toBeInstanceOf(WrongPassphraseError);
+  });
+
+  it('splits a public-key encrypted file across compact stamps and restores it in any order', async () => {
+    const pair = await generateKeyPair('x25519');
+    const recipient = await importIdentity(pair.type, pair.raw, pair.pkcs8);
+    const payload = { kind: 'file', name: 'tiny.bin', data: rnd(1600) } as const;
+    const packet = await sealPayload(payload, '', MODE_MICRODOT, undefined, 0, 0, '', 0, [recipient]);
+    const frames = splitPacket(packet, MAX_MICRODOT_PACKET).map((part) => decodeCodeArt(encodeMicrodot(part))).reverse();
+    expect(frames.length).toBeGreaterThan(1);
+    const assembled = assemble(frames);
+    if (assembled.state !== 'complete') throw new Error('incomplete');
+    expect(await openPayload(assembled.packet, '', Date.now(), [recipient])).toMatchObject(payload);
+  });
+
+  it('refuses empty or oversized stamps rather than creating an unreadable image', () => {
+    for (const length of [0, MAX_MICRODOT_PACKET + 1]) expect(() => encodeMicrodot(new Uint8Array(length))).toThrow(/microdot/);
   });
 });
 

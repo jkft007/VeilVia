@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { decodeCodeArt, encodeCodeArt, type Rgba } from '../src/codeart';
+import { decodeCodeArt, encodeCodeArt, encodeMicrodot, type Rgba } from '../src/codeart';
 import { ExpiredError, openPayload, sealPayload, WrongPassphraseError } from '../src/crypto';
 import { argon2Bytes } from '../src/kdf';
-import { MODE_CODEART, MODE_DCT, MODE_FAKEQR, MODE_QR, MODE_STEGO, PacketError, SIGNED_HEADER_LEN, crc32, finishPacket, parseFrame, parsePacket } from '../src/packet';
+import { MODE_CODEART, MODE_DCT, MODE_FAKEQR, MODE_MICRODOT, MODE_QR, MODE_STEGO, PacketError, SIGNED_HEADER_LEN, crc32, finishPacket, parseFrame, parsePacket } from '../src/packet';
 import { findPhoto, hidePhoto } from '../src/photo';
 import { canUse, decodePublicKey, encodePublicKey, generateKeyPair, importIdentity, publicKeyLink, type KeyType } from '../src/pubkey';
 import { decodeFakeQr, decodePlainQr, encodeFakeQr, encodePlainQr } from '../src/qrmodes';
@@ -214,12 +214,13 @@ function cover(): Rgba {
 }
 
 describe.each(['public', 'private'] as const)('%s signed messages through images', (visibility) => {
-  it.each(['codeart', 'qr', 'fakeqr', 'lsb', 'dct'])('retains a verifiable signature through %s', async (mode) => {
+  it.each(['codeart', 'microdot', 'qr', 'fakeqr', 'lsb', 'dct'])('retains a verifiable signature through %s', async (mode) => {
     const alice = await signer();
-    const modes: Record<string, number> = { codeart: MODE_CODEART, qr: MODE_QR, fakeqr: MODE_FAKEQR, lsb: MODE_STEGO, dct: MODE_DCT };
+    const modes: Record<string, number> = { codeart: MODE_CODEART, microdot: MODE_MICRODOT, qr: MODE_QR, fakeqr: MODE_FAKEQR, lsb: MODE_STEGO, dct: MODE_DCT };
     const packet = await sealPayload(text, pass, modes[mode], undefined, 0, 0, '', 0, [], false, alice, visibility);
     let decoded: Uint8Array;
     if (mode === 'codeart') decoded = decodeCodeArt(encodeCodeArt(packet));
+    else if (mode === 'microdot') decoded = decodeCodeArt(encodeMicrodot(packet));
     else if (mode === 'qr') decoded = decodePlainQr(encodePlainQr(packet));
     else if (mode === 'fakeqr') decoded = await decodeFakeQr(await encodeFakeQr(packet, 'https://example.test/', pass), pass);
     else {
@@ -230,10 +231,11 @@ describe.each(['public', 'private'] as const)('%s signed messages through images
     expect(await openPayload(decoded, pass, Date.now(), [], alice)).toMatchObject({ ...text, sender: { raw: alice.raw } });
   });
 
-  it('verifies a signed packet only after all split parts have been assembled', async () => {
+  it.each(['codeart', 'microdot'])('verifies a signed %s packet only after all split parts have been assembled', async (mode) => {
     const alice = await signer();
-    const packet = await sealPayload(text, pass, MODE_CODEART, undefined, 0, 0, '', 0, [], false, alice, visibility);
-    const frames = splitPacket(packet, 110).map((part) => decodeCodeArt(encodeCodeArt(part))).reverse();
+    const packet = await sealPayload(text, pass, mode === 'microdot' ? MODE_MICRODOT : MODE_CODEART, undefined, 0, 0, '', 0, [], false, alice, visibility);
+    const render = mode === 'microdot' ? encodeMicrodot : encodeCodeArt;
+    const frames = splitPacket(packet, 110).map((part) => decodeCodeArt(render(part))).reverse();
     expect(frames.length).toBeGreaterThan(1);
     const assembled = assemble(frames);
     expect(assembled.state).toBe('complete');

@@ -123,6 +123,7 @@
           <option value="qr">QR code</option>
           <option value="fakeqr">Fake QR code</option>
           <option value="photo">Hidden in a photo</option>
+          <option value="microdot">Microdot (compact dot stamp)</option>
         </select>
         <div id="mode-desc" class="hint"></div>
 
@@ -465,7 +466,7 @@
         <ol>
           <li><b>Encrypt.</b> Your browser encrypts the secret (text, a file or a pasted picture) with your passphrase: AES-256-GCM, with a key from Argon2id, which is deliberately slow and memory-hungry so that guessing is expensive. Your choices (reveal animation, reading time, expiry) are sealed inside the same encrypted data. Instead of a shared passphrase it can be locked to one or more <b>public keys</b>: the same random key is wrapped once for each recipient, so only the holder of a matching private key can open it, and the passphrase never has to travel. An optional recipient pass code is a second way in.</li>
           <li><b>Sign (optional).</b> A separate Ed25519 signing key identifies a sender only when you have checked its fingerprint through a trusted channel. Public signatures cover the encrypted packet and expose the signing key to anyone who extracts it (108 bytes extra). Encrypted signatures hide the signing key and signature inside the encryption and bind the payload, settings and recipient slots (97 bytes extra). Choose encrypted signatures for sender privacy in photos. Signatures are always checked before showing any secret; unsigned and unknown senders are labelled.</li>
-          <li><b>Hide.</b> The encrypted bytes, with error correction added, are drawn into an image: a code-art mosaic, a QR code (a phone camera opens this page with the secret ready for the passphrase), a fake QR code (it scans as a harmless decoy while the real data hides in the error-correction budget) or an ordinary-looking photo. One photo can hold up to 4 messages, each with its own passphrase and pass code, and a secret that is too big is split across several images.</li>
+          <li><b>Hide.</b> The encrypted bytes, with error correction added, are drawn into an image: a code-art mosaic, a compact greyscale microdot stamp, a QR code (a phone camera opens this page with the secret ready for the passphrase), a fake QR code (it scans as a harmless decoy while the real data hides in the error-correction budget) or an ordinary-looking photo. One photo can hold up to 4 messages, each with its own passphrase and pass code, and a secret that is too big is split across several images.</li>
           <li><b>Send.</b> You send the image like any picture: pasted, attached or scanned.</li>
           <li><b>Reveal.</b> The recipient pastes, drops, picks or scans the image on the Reveal tab and types the passphrase (or pass code), or, for an image sent to their public key, the passphrase of their own key (or a passkey, if they added one). The original comes back with an animation, and clears itself from the screen after the reading time. Nothing is uploaded: there is no server.</li>
         </ol>
@@ -475,7 +476,7 @@
         <ol>
           <li>On <b>Hide a secret</b>, choose <b>Text</b>, <b>File</b> or <b>Image</b> and add your secret.</li>
           <li>Enter a <b>Recipient passcode</b>: use at least five unrelated words, not a short PIN. To accept a shorter or weaker code, explicitly tick <b>Use this short or weak passcode anyway</b>; this is off by default. A strong passphrase is generated automatically, but protection is only as strong as your passcode.</li>
-          <li>Choose the <b>Packaging</b>: code art, QR code, fake QR code or hidden in a photo. Photos use the JPEG-safe method and can use your own cover photo.</li>
+          <li>Choose the <b>Packaging</b>: code art, microdot, QR code, fake QR code or hidden in a photo. Photos use the JPEG-safe method and can use your own cover photo. Microdots are compact dot stamps: send the original PNG without resizing or removing its white border.</li>
           <li>Optionally open <b>Sign as a sender</b>, choose your Ed25519 signing key and enter its passphrase. Choose <b>Only someone who can decrypt (encrypted signature)</b> to hide your signing key from people who cannot decrypt. Recipients must check your signing fingerprint through a trusted channel; they can disclose the signature afterward.</li>
           <li>Press <b>Create image &amp; copy</b>. Paste the image(s) and reveal link into your message, and share the passcode separately. Send every image if the secret was split. If copying is blocked, use <b>Copy message</b> or download the images and send the displayed reveal link.</li>
         </ol>
@@ -483,7 +484,7 @@
         <p>Press <b>Advanced user</b> in the sending-mode box above the tabs. It opens the full composer on this page without clearing your text, file, packaging or signing choice. Press <b>Simple sending</b> in the same box to return. Simple sending does not apply advanced recipients, extra photo messages or custom reveal settings; those settings are kept for when you switch back.</p>
         <ol>
           <li>Choose <b>Text</b>, <b>File</b> or <b>Image</b>, add your secret and enter a passphrase, or press <b>Generate</b>. In Text mode you can also read text from a camera photo.</li>
-          <li>Pick the <b>Packaging</b>: code art (works almost everywhere), QR code (opens this site when scanned), fake QR code (scans as a decoy) or hidden in a photo (JPEG-safe or lossless). You can choose your own cover photo.</li>
+          <li>Pick the <b>Packaging</b>: code art (works almost everywhere), microdot (compact greyscale stamp, original PNG only), QR code (opens this site when scanned), fake QR code (scans as a decoy) or hidden in a photo (JPEG-safe or lossless). You can choose your own cover photo.</li>
           <li>To authenticate yourself, make an <b>Ed25519 signing key</b> once in <b>My keys</b>, back it up and share its public half. Under <b>Sign as a sender</b>, select that key and enter its passphrase for this creation. The signing passphrase stays with you. Recipients must check your signing fingerprint through a trusted channel.</li>
           <li>Optionally open <b>More options</b>: a reveal animation (one of 84), a reading time (which you can lock so the recipient cannot change it), an expiry from 1 minute to 30 days, and a recipient pass code. With the photo style you can also add up to 3 more messages to the same photo, each with its own passphrase. Or open <b>Send to a public key instead</b> to lock it to someone's public key, so no passphrase has to be shared (they make a key once under <b>My keys</b> and send you the public half).</li>
           <li>Press <b>Create image</b>, then <b>Copy message</b> (the image, a link to this site and, for code art and QR, a direct link to the secret) and paste it into an email or chat, or download the image. Give the passphrase to your recipient by a different route.</li>
@@ -527,6 +528,7 @@
 
         <h3>Which apps keep the image intact</h3>
         <p>What matters is whether an app delivers your image <em>as it is</em> or re-compresses and shrinks it like a photo.</p>
+        <p><b>Microdot:</b> send the original PNG as a file or attachment, including its white border. It is a small dot-pattern stamp, not an invisible mark or a QR code. Paste, drop or upload it on <b>Reveal a secret</b>; camera scanning is not supported. Each stamp carries up to 1,000 encrypted bytes, including encryption and signing overhead. Larger secrets can be split across stamps. JPEG recompression, resizing, cropping or printing and rescanning may make it unreadable.</p>
         <div class="tablewrap">
           <table>
             <thead>

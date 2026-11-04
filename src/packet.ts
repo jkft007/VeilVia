@@ -24,7 +24,7 @@
 // 0x40 = the first decrypted byte is the sender's chosen reveal animation (kept inside the encryption),
 // 0x80 = a 4-byte big-endian expiry time (Unix seconds) follows it, also inside the encryption,
 // 0x08 = a 2-byte big-endian reading time (seconds the revealed secret stays on screen; 0xFFFF = until cleared) follows that.
-// (Image modes are 1..5, so the low three bits are enough for the mode.)
+// (Image modes are 1..6, so the low three bits are enough for the mode.)
 // The whole header is authenticated by AES-GCM, so the stored key-derivation settings cannot be altered.
 import type { KdfSpec } from './kdf';
 
@@ -33,6 +33,7 @@ export const MODE_STEGO = 2;
 export const MODE_DCT = 3;
 export const MODE_QR = 4;
 export const MODE_FAKEQR = 5;
+export const MODE_MICRODOT = 6;
 export const FLAG_READ = 0x08;
 export const FLAG_COMPRESSED = 0x10;
 export const FLAG_FILE = 0x20;
