@@ -42,7 +42,10 @@ function setExperience(simple: boolean) {
   $('btn-create').textContent = simple ? 'Create image & copy' : 'Create image';
   syncModeUi();
 }
-$('experience-toggle').onclick = () => setExperience(!simpleSend());
+$('experience-toggle').onclick = () => {
+  setExperience(!simpleSend());
+  showTab('hide');
+};
 
 // ---- tabs -------------------------------------------------------------------
 function showTab(which: 'hide' | 'reveal' | 'keys') {
@@ -83,8 +86,10 @@ $('pass').addEventListener('input', updateMeter);
 $('simple-passcode').addEventListener('input', () => {
   const { level } = strength($<HTMLInputElement>('simple-passcode').value);
   $('simple-code-note').textContent = level === 'none' ? '' : level === 'weak'
-    ? 'Too easy to guess. Use at least five unrelated words, not a short PIN.'
+    ? 'Too easy to guess. Use at least five unrelated words, or explicitly accept the risk below. The generated passphrase cannot make a weak passcode safer.'
     : level === 'ok' ? 'Acceptable; longer is better.' : 'Strong.';
+  $('simple-weak-row').hidden = level !== 'weak';
+  if (level !== 'weak') $<HTMLInputElement>('chk-simple-weak-code').checked = false;
 });
 
 // The optional recipient pass code gets the same strength check: it opens the image just like the passphrase does.
@@ -468,8 +473,8 @@ $('btn-create').onclick = async () => {
 
   const passcode = $<HTMLInputElement>(simple ? 'simple-passcode' : 'passcode').value;
   if (simple && !passcode) return setStatus(status, 'Enter a passcode to share separately with your recipient.', true);
-  if (simple && strength(passcode).level === 'weak') {
-    return setStatus(status, 'That passcode is too easy to guess. Use at least five unrelated words, not a short PIN.', true);
+  if (simple && strength(passcode).level === 'weak' && !$<HTMLInputElement>('chk-simple-weak-code').checked) {
+    return setStatus(status, 'That passcode is too easy to guess. Use at least five unrelated words, or tick "Use this short or weak passcode anyway" to accept the risk.', true);
   }
   if (!simple && passcode && strength(passcode).level === 'weak' && !$<HTMLInputElement>('chk-weak-code').checked) {
     $<HTMLDetailsElement>('more-opts').open = true; // the weak-pass-code tick box lives in there

@@ -82,6 +82,20 @@ header > p:not(.brand-line) {
 
 .header-btns { position: absolute; top: 8px; right: 0; display: flex; gap: 8px; }
 
+.experience-switch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-surface);
+  background: var(--surface-secondary);
+}
+.experience-switch > div { flex: 1 1 240px; }
+.experience-switch .hint { margin: 4px 0 0; }
+.experience-switch button { min-height: 44px; flex-shrink: 0; border-color: var(--signal-violet); font-weight: 600; }
+
 .tabs {
   position: relative;
   isolation: isolate;
