@@ -148,7 +148,7 @@ export function playReveal(o: RevealOptions): RevealHandle {
   const IMG_FX: RevealStyle[] = ['dissolve', 'sandfall', 'blackhole', 'hammersmash', 'shatter', 'burnaway', 'shredder', 'melt', 'rainwash', 'acidrain', 'icemelt', 'shaken', 'footsmash']; // the styles that destroy the scanned image
   const FX_DUR = 2200; // how long the destruction takes
   const STEAM = 900; // how long a letter takes to drift up from the chimney to its place
-  const T_INTRO = style === 'matrix' ? T_SCAN + T_RAIN : ['curtain', 'moon', 'swarm', 'bubbles', 'ufo', 'spotlight', 'jackpot', 'ink', 'safe', 'train', 'oldtype', 'printer', 'ticker', 'radar', 'parade', 'asteroids', 'hearts', 'flowers', 'bomb', 'wizard', 'minions', 'snowglobe', 'rocket', 'lightning', 'helicopters', 'banner', 'balloons', 'quill', 'dominoes', 'treasure', 'paperplanes', 'ghosts', 'seance', 'poltergeist', 'haunted', 'dragon', 'panther', 'roadrunner', 'genie', 'fartgun', 'arrows', 'tiles', 'witches', 'redarrows', 'pirate', 'fogwriter', 'whale', 'submarine', 'bomber', 'kraken', 'thor', 'spiders', 'hatdance', 'lasers', 'earthquake', 'volcano', 'emoji', 'sharks', 'broomball', 'zombies', 'builder', ...IMG_FX].includes(style) ? 600 : style === 'film' ? 1400 : style === 'can' || style === 'flag' || style === 'plane' ? 800 : 1000;
+  const T_INTRO = style === 'matrix' ? T_SCAN + T_RAIN : ['curtain', 'moon', 'swarm', 'bubbles', 'ufo', 'spotlight', 'jackpot', 'ink', 'safe', 'train', 'oldtype', 'printer', 'ticker', 'radar', 'parade', 'asteroids', 'hearts', 'flowers', 'bomb', 'wizard', 'minions', 'snowglobe', 'rocket', 'lightning', 'helicopters', 'banner', 'balloons', 'quill', 'dominoes', 'treasure', 'paperplanes', 'ghosts', 'seance', 'poltergeist', 'haunted', 'dragon', 'panther', 'roadrunner', 'genie', 'fartgun', 'arrows', 'tiles', 'witches', 'redarrows', 'pirate', 'fogwriter', 'whale', 'submarine', 'bomber', 'kraken', 'thor', 'spiders', 'hatdance', 'lasers', 'earthquake', 'volcano', 'emoji', 'sharks', 'broomball', 'zombies', 'builder', 'oddbods', ...IMG_FX].includes(style) ? 600 : style === 'film' ? 1400 : style === 'can' || style === 'flag' || style === 'plane' ? 800 : 1000;
   const T_RES =
     style === 'iris' ? 1300
     : style === 'fireworks' ? Math.max(T_RESOLVE, 2200)
@@ -210,6 +210,7 @@ export function playReveal(o: RevealOptions): RevealHandle {
     : style === 'volcano' ? Math.max(T_RESOLVE, 1800) + 900 + 300
     : style === 'emoji' ? Math.max(T_RESOLVE, 1800) + 600
     : style === 'builder' ? Math.min(4200, Math.max(1600, wordCount * 330)) + 440 + 700
+    : style === 'oddbods' ? Math.max(T_RESOLVE, 1500) + 650 + 560 + 180 + 650 + 200
     : IMG_FX.includes(style) ? FX_DUR + 300
     : style === 'sharks' ? Math.max(T_RESOLVE, 1600) + 1400 + 300
     : style === 'broomball' ? Math.max(T_RESOLVE, 1500) + 700 + 400 + 200
@@ -261,6 +262,7 @@ export function playReveal(o: RevealOptions): RevealHandle {
     : style === 'broomball' ? T_RES - 700 - 400 - 200
     : style === 'zombies' ? T_RES - 800 - 600 - 150
     : style === 'builder' ? T_RES - 440 - 700
+    : style === 'oddbods' ? T_RES - 650 - 560 - 180 - 650 - 200
     : T_RES;
   visible.forEach((c, i) => (c.lock = (i / Math.max(1, visible.length)) * T_LOCK * spread + rnd() * T_LOCK * 0.15));
   const ease = (p: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, p)), 3);
@@ -7230,6 +7232,188 @@ export function playReveal(o: RevealOptions): RevealHandle {
     fadeToFinal(r);
   };
 
+  // Oddbods: a gang of seven odd, brightly coloured blob creatures. Each one boings in carrying a word above its head, leaps up
+  // and sticks the word in place, lands with a squash and bounces off again. At the end the letters keep a hint of each
+  // blob's colour until the usual text fades in.
+  const ODD_IN = 650; // the bouncy hop in from the side
+  const ODD_LEAP = 560; // the leap up to the word's place and the fall back down
+  const ODD_OUT = 650; // the bounce off the stage
+  const ODD_COLS = ['#e8413a', '#ffd23f', '#5cc24a', '#3fa2f0', '#9b5cf0', '#ff7ac0', '#ff9a2e'];
+  const ob = Math.max(0.6, Math.min(1.15, H / 270)); // the size of a blob
+  const oddBushes = Array.from({ length: 7 }, (_, i) => ({ x: ((i + rnd() * 0.6) / 7) * W, s: 16 + rnd() * 18 }));
+  const oddBlob = (x: number, feet: number, kind: number, dir: number, squash: number, step: number, armsUp: number) => {
+    const col = ODD_COLS[kind % ODD_COLS.length];
+    const k = ob;
+    const bw = 13 * k; // half the width of the body
+    const bh = 36 * k; // the height of the body
+    ctx.save();
+    ctx.translate(x, feet);
+    ctx.scale(1 + squash * 0.35, 1 - squash * 0.3);
+    ctx.lineCap = 'round';
+    // legs
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 5 * k;
+    for (const s of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(s * 5 * k, -6 * k);
+      ctx.lineTo(s * 5 * k + Math.sin(step) * s * 3 * k, 0);
+      ctx.stroke();
+    }
+    // the body: a tall jelly bean
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.ellipse(0, -bh / 2 - 4 * k, bw, bh / 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.28)'; // a shine
+    ctx.beginPath();
+    ctx.ellipse(-bw * 0.45, -bh * 0.72, bw * 0.22, bh * 0.16, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.22)'; // a pale belly
+    ctx.beginPath();
+    ctx.ellipse(0, -bh * 0.32, bw * 0.6, bh * 0.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // arms: down and swinging, or raised to hold the word up
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 4 * k;
+    for (const s of [-1, 1]) {
+      const hx = s * (bw + 6 * k) - s * armsUp * 6 * k;
+      const hy = -bh * 0.45 + Math.sin(step + s) * 2 * k * (1 - armsUp) - armsUp * bh * 0.75;
+      ctx.beginPath();
+      ctx.moveTo(s * bw * 0.85, -bh * 0.55);
+      ctx.lineTo(hx, hy);
+      ctx.stroke();
+      ctx.fillStyle = col;
+      circ(hx, hy, 2.6 * k);
+    }
+    // a little something on top, different for each of them
+    const topY = -bh - 4 * k;
+    ctx.fillStyle = col;
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 2 * k;
+    if (kind % 7 === 0) { // a curly tuft
+      ctx.beginPath();
+      ctx.moveTo(0, topY + 2 * k);
+      ctx.quadraticCurveTo(6 * k, topY - 8 * k, 1 * k, topY - 9 * k);
+      ctx.stroke();
+    } else if (kind % 7 === 2) { // two round ears
+      circ(-bw * 0.65, topY + 6 * k, 4 * k);
+      circ(bw * 0.65, topY + 6 * k, 4 * k);
+    } else if (kind % 7 === 4) { // an antenna with a bobble
+      ctx.beginPath();
+      ctx.moveTo(0, topY + 2 * k);
+      ctx.lineTo(Math.sin(step) * 2 * k, topY - 8 * k);
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      circ(Math.sin(step) * 2 * k, topY - 9 * k, 2.5 * k);
+    } else if (kind % 7 === 6) { // three spiky hairs
+      ctx.beginPath();
+      for (const s of [-1, 0, 1]) {
+        ctx.moveTo(s * 3 * k, topY + 3 * k);
+        ctx.lineTo(s * 5 * k, topY - 5 * k);
+      }
+      ctx.stroke();
+    }
+    // big eyes looking where it is going
+    const ey = -bh * 0.74;
+    const er = 5.2 * k;
+    const look = dir * 1.6 * k;
+    for (const s of [-1, 1]) {
+      ctx.fillStyle = '#ffffff';
+      circ(s * 5.3 * k, ey, er);
+      ctx.fillStyle = '#1a1a22';
+      circ(s * 5.3 * k + look, ey + (armsUp > 0.5 ? -1.4 * k : 0.6 * k), er * 0.45);
+      if (kind % 7 === 3) { // sleepy lids
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.arc(s * 5.3 * k, ey, er + 0.5, Math.PI, 0);
+        ctx.fill();
+      } else if (kind % 7 === 1) { // cross little eyebrows
+        ctx.strokeStyle = '#1a1a22';
+        ctx.lineWidth = 1.4 * k;
+        ctx.beginPath();
+        ctx.moveTo(s * 2 * k, ey - er - 1 * k);
+        ctx.lineTo(s * 9 * k, ey - er - 3 * k);
+        ctx.stroke();
+      }
+    }
+    // the mouth: a grin, or an open "wheee" when it is in the air
+    ctx.fillStyle = '#5a1020';
+    ctx.strokeStyle = '#3a0c16';
+    ctx.lineWidth = 1.5 * k;
+    if (armsUp > 0.5) {
+      ctx.beginPath();
+      ctx.ellipse(0, -bh * 0.5, 3.4 * k, 4 * k, 0, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.arc(0, -bh * 0.55, 5 * k, 0.15 * Math.PI, 0.85 * Math.PI);
+      ctx.stroke();
+    }
+    ctx.restore();
+  };
+  const drawOddbods = (r: number) => {
+    const gy = H - 10;
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, '#1b3a5c');
+    sky.addColorStop(1, '#2c5a6e');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#2f7a3a'; // round bushes and the grass
+    for (const b of oddBushes) circ(b.x, gy + 4, b.s * ob);
+    ctx.fillStyle = '#3e9a46';
+    ctx.fillRect(0, gy, W, H - gy);
+    ctx.font = `${fs}px ${FONT}`;
+    ctx.textBaseline = 'alphabetic';
+    const settled: { c: Cell; col: string; wob: number }[] = [];
+    const carried: { c: Cell; x: number; y: number; col: string }[] = [];
+    const blobs: (() => void)[] = [];
+    const bodyH = 40 * ob;
+    for (const { w, i, t0: wt0 } of wt) {
+      const rr = r - wt0;
+      if (rr < 0) continue;
+      const kind = i % ODD_COLS.length;
+      const col = ODD_COLS[kind];
+      const dirIn = i % 2 ? -1 : 1; // 1: comes in from the left
+      const edge = dirIn > 0 ? -30 : W + 30;
+      const lift = (i % 3) * 15; // carried words ride at three heights so they do not pile up
+      const holdY = (feet: number) => feet - bodyH - 16 * ob - lift; // where a word sits when held up overhead
+      if (rr < ODD_IN) {
+        const q = rr / ODD_IN;
+        const x = edge + (w.cx - edge) * (1 - Math.pow(1 - q, 2));
+        const hopPh = (rr / ODD_IN) * Math.PI * 4; // four boings on the way in
+        const hop = Math.abs(Math.sin(hopPh)) * 14 * ob;
+        const sq = Math.max(0, 0.5 - Math.abs(Math.sin(hopPh))) * 0.6; // squashed on each landing
+        const feet = gy - hop;
+        blobs.push(() => oddBlob(x, feet, kind, dirIn, sq, hopPh * 1.5, 1));
+        for (const c of w.cells) carried.push({ c, x: c.x + (x - w.cx), y: holdY(feet), col });
+      } else if (rr < ODD_IN + ODD_LEAP) {
+        const p = (rr - ODD_IN) / ODD_LEAP;
+        const lineY = w.cells[0].y;
+        const peakFeet = Math.min(gy, lineY + bodyH + 16 * ob + lift); // high enough to hold the word at its line
+        const arc = Math.sin(p * Math.PI);
+        const feet = p < 0.12 ? gy : gy + (peakFeet - gy) * arc;
+        const crouch = p < 0.12 ? Math.sin((p / 0.12) * Math.PI) * 0.8 : 0;
+        blobs.push(() => oddBlob(w.cx, feet, kind, 0, crouch, 0, p < 0.5 ? 1 : 1 - (p - 0.5) * 2));
+        if (p < 0.5) for (const c of w.cells) carried.push({ c, x: c.x, y: holdY(feet) + (c.y - holdY(feet)) * ease(p * 2), col });
+        else for (const c of w.cells) settled.push({ c, col, wob: Math.sin((p - 0.5) * 40) * 2 * (1 - p) });
+      } else {
+        const e = rr - ODD_IN - ODD_LEAP;
+        for (const c of w.cells) settled.push({ c, col, wob: 0 });
+        if (e < 180) blobs.push(() => oddBlob(w.cx, gy, kind, 0, Math.sin((e / 180) * Math.PI) * 0.9, 0, 0)); // the landing squash
+        else if (e < 180 + ODD_OUT) {
+          const q = (e - 180) / ODD_OUT;
+          const target = dirIn > 0 ? W + 40 : -40; // it bounces off the way it was heading
+          const hopPh = q * Math.PI * 3;
+          blobs.push(() => oddBlob(w.cx + (target - w.cx) * q * q, gy - Math.abs(Math.sin(hopPh)) * 16 * ob, kind, dirIn, 0, hopPh * 1.5, 0));
+        }
+      }
+    }
+    for (const s of settled) textLit(s.c, '#ffffff', s.col, 7, s.c.x, s.c.y + s.wob);
+    for (const b of blobs) b();
+    for (const k of carried) textLit(k.c, '#ffffff', k.col, 9, k.x, k.y);
+    fadeToFinal(r);
+  };
+
   const special: Partial<Record<RevealStyle, (r: number, t: number) => void>> = {
     minions: drawMinions,
     snowglobe: drawSnowglobe,
@@ -7285,6 +7469,7 @@ export function playReveal(o: RevealOptions): RevealHandle {
     shaken: drawShaken,
     footsmash: drawFoot,
     builder: drawBuilder,
+    oddbods: drawOddbods,
   };
 
   const frame = (now: number) => {
