@@ -109,14 +109,13 @@ header > p:not(.brand-line) {
   position: absolute;
   z-index: -1;
   top: 17px;
-  right: 16.666%;
-  left: 16.666%;
+  right: calc(50% / var(--tab-n, 3));
+  left: calc(50% / var(--tab-n, 3));
   height: 1px;
   background: var(--border);
   content: "";
 }
 
-.tabs.has-reading::before { left: 12.5%; right: 12.5%; }
 
 .tabs button {
   position: relative;
@@ -411,6 +410,12 @@ dialog.help::backdrop { background: rgb(5 8 12 / 72%); backdrop-filter: blur(4px
 
 #tray { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-bottom: 12px; }
 #tray .thumb { position: relative; }
+.savedcard { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-top: 1px solid var(--border); }
+.savedthumb { flex: 0 0 auto; width: 72px; height: 72px; object-fit: contain; background: #fff; border-radius: 4px; }
+.savedbody { flex: 1 1 auto; min-width: 0; }
+.savedbody > input { width: 100%; font-weight: 600; }
+.savedbody .row { margin-top: 6px; flex-wrap: wrap; }
+#saved-filter { flex: 1 1 200px; }
 #tray canvas { display: block; width: 84px; height: 84px; border: 1px solid var(--border); border-radius: 6px; background: #fff; object-fit: cover; }
 #tray .thumb button { position: absolute; top: -6px; right: -6px; width: 24px; min-height: 24px; padding: 0; border-radius: 50%; background: var(--surface); font-size: 12px; }
 

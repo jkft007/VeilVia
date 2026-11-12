@@ -34,6 +34,7 @@
         <button id="tab-reveal" role="tab" aria-selected="false" aria-controls="panel-reveal">Reveal a secret</button>
         <button id="tab-read" role="tab" aria-selected="false" aria-controls="panel-read" hidden>Read message</button>
         <button id="tab-keys" role="tab" aria-selected="false" aria-controls="panel-keys">My keys</button>
+        <button id="tab-saved" class="advanced-only" role="tab" aria-selected="false" aria-controls="panel-saved">Saved secrets</button>
       </div>
 
       <section id="panel-hide" class="card" role="tabpanel">
@@ -219,6 +220,7 @@
         </details>
 
         <label class="check split advanced-only"><input id="chk-split" type="checkbox" checked /> Split across several images when it does not fit in one</label>
+        <label class="check advanced-only" title="Keeps the encrypted image on this device under Saved secrets. The passphrase is never saved."><input id="chk-save-created" type="checkbox" /> Also keep the created image in Saved secrets</label>
 
         <button id="btn-create" class="primary">Create image &amp; copy</button>
         <div id="hide-status" class="status" role="status"></div>
@@ -245,6 +247,7 @@
           <div class="row center">
             <button id="btn-paste" class="ghost" type="button">Paste from clipboard</button>
             <button id="btn-scan" class="ghost" type="button">Scan QR with camera</button>
+            <button id="btn-save-received" class="ghost advanced-only" type="button" disabled title="Keep the loaded encrypted image(s) on this device so you can reveal them again later. The passphrase is never saved.">Save to Saved secrets</button>
           </div>
           <div id="cam-wrap" hidden>
             <video id="cam" playsinline muted></video>
@@ -477,6 +480,23 @@
         </ul>
       </section>
 
+      <section id="panel-saved" class="card" role="tabpanel" aria-labelledby="tab-saved" hidden>
+        <p>Encrypted images you chose to keep on this device, so you can reveal them again later. Only the images are stored, exactly as they arrived (as lossless PNG). <b>Passphrases, passcodes and revealed contents are never saved</b>: you still need them to open a saved secret.</p>
+        <div id="saved-status" class="status" role="status"></div>
+        <div class="row">
+          <input id="saved-filter" type="search" placeholder="Search by name" autocomplete="off" spellcheck="false" aria-label="Search saved secrets" />
+          <span id="saved-count" class="hint"></span>
+        </div>
+        <div id="saved-list"></div>
+        <h3>Import and export</h3>
+        <p class="hint">An export is a JSON file with the encrypted images and their names. Use it as a backup or to move them to another device; importing skips any already saved here.</p>
+        <div class="row">
+          <button id="saved-export" class="ghost" type="button" disabled>Export all</button>
+          <label class="btn-like" for="saved-import-file">Import…</label>
+          <input id="saved-import-file" type="file" accept=".json,application/json" hidden />
+        </div>
+      </section>
+
       <dialog id="about" class="help" aria-labelledby="help-title">
         <div class="help-head">
           <h2 id="help-title">Help: how it works, when to use it, and which apps keep the image</h2>
@@ -512,6 +532,7 @@
           <li>Choose <b>Text</b>, <b>File</b> or <b>Image</b>, add your secret and enter a passphrase, or press <b>Generate</b>. In Text mode you can also read text from a camera photo.</li>
           <li>Pick the <b>Packaging</b>: code art (works almost everywhere), microdot (tiny colour stamp, exact original PNG only), QR code (opens this site when scanned), fake QR code (scans as a decoy) or hidden in a photo (JPEG-safe or lossless). You can choose your own cover photo.</li>
           <li>To authenticate yourself, make an <b>Ed25519 signing key</b> once in <b>My keys</b>, back it up and share its public half. Under <b>Sign as a sender</b>, select that key and enter its passphrase for this creation. The signing passphrase stays with you. Recipients must check your signing fingerprint through a trusted channel.</li>
+          <li>To keep what you send or receive, tick <b>Also keep the created image in Saved secrets</b>, or press <b>Save to Saved secrets</b> on the Reveal tab. The <b>Saved secrets</b> tab lists them, opens one on the Reveal tab again, and exports or imports them as a JSON file. Only the encrypted images are kept, never passphrases or revealed contents.</li>
           <li>Optionally open <b>More options</b>: a reveal animation (one of 85), a reading time (which you can lock so the recipient cannot change it), an expiry from 1 minute to 30 days, and a recipient passcode. With the photo style you can also add up to 3 more messages to the same photo, each with its own passphrase. Or open <b>Send to a public key instead</b> to lock it to someone's public key, so no passphrase has to be shared (they make a key once under <b>My keys</b> and send you the public half).</li>
           <li>Press <b>Create image</b>, then <b>Copy message</b> (the image, a link to this site and, for code art and QR, a direct link to the secret) and paste it into an email or chat, or download the image. Give the passphrase to your recipient by a different route.</li>
         </ol>

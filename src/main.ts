@@ -26,6 +26,7 @@ import { poofCanvas, wallyPeek } from './poof';
 import { localVoices, speak, speechAvailable, stopSpeaking } from './speech';
 import { PasskeyError } from './passkey';
 import { photoPassFor } from './pubkey';
+import { initVaultUi, saveImages } from './vaultui';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches || $<HTMLInputElement>('chk-motion').checked;
@@ -42,6 +43,7 @@ function setExperience(simple: boolean) {
   $('experience-toggle').setAttribute('aria-pressed', String(!simple));
   $('btn-create').textContent = simple ? 'Create image & copy' : 'Create image';
   syncModeUi();
+  syncTabLine();
 }
 $('experience-toggle').onclick = () => {
   setExperience(!simpleSend());
@@ -49,15 +51,21 @@ $('experience-toggle').onclick = () => {
 };
 
 // ---- tabs -------------------------------------------------------------------
-function showTab(which: 'hide' | 'reveal' | 'read' | 'keys') {
-  if (which === 'read') {
-    $('tab-read').hidden = false;
-    $('tab-read').parentElement!.classList.add('has-reading');
-  }
-  for (const t of ['hide', 'reveal', 'read', 'keys'] as const) {
+type Tab = 'hide' | 'reveal' | 'read' | 'keys' | 'saved';
+const TABS: Tab[] = ['hide', 'reveal', 'read', 'keys', 'saved'];
+// The line joining the tab dots runs from the middle of the first tab to the middle of the last, however many are shown.
+function syncTabLine() {
+  const shown = TABS.filter((t) => !$(`tab-${t}`).hidden && getComputedStyle($(`tab-${t}`)).display !== 'none').length;
+  $('tab-hide').parentElement!.style.setProperty('--tab-n', String(Math.max(1, shown)));
+}
+function showTab(which: Tab) {
+  if (which === 'saved' && simpleSend()) which = 'hide';
+  if (which === 'read') $('tab-read').hidden = false;
+  for (const t of TABS) {
     $(`tab-${t}`).setAttribute('aria-selected', String(t === which));
     $(`panel-${t}`).hidden = t !== which;
   }
+  syncTabLine();
 }
 $('tab-hide').onclick = () => showTab('hide');
 $('tab-reveal').onclick = () => showTab('reveal');
@@ -67,6 +75,7 @@ $('btn-read-another').onclick = () => {
   $<HTMLInputElement>('pass2').focus();
 };
 $('tab-keys').onclick = () => showTab('keys');
+$('tab-saved').onclick = () => showTab('saved');
 
 // ---- passphrase helpers -----------------------------------------------------
 let generatedPass = ''; // a passphrase made by the Generate button is known to be random
@@ -681,6 +690,13 @@ $('btn-create').onclick = async () => {
       }
     } else {
       setStatus(status, frames.length > 1 ? `Done: ${frames.length} images. Copy the message or download them all.` : 'Done. Copy it into your message, or download it.');
+      if ($<HTMLInputElement>('chk-save-created').checked) {
+        try {
+          setStatus(status, `${status.textContent} ${await saveImages(imgs, 'sent')}`);
+        } catch (e) {
+          setStatus(status, `Image created, but it could not be kept in Saved secrets: ${(e as Error).message}`, true);
+        }
+      }
     }
   } catch (e) {
     setStatus(status, (e as Error).message, true);
@@ -824,6 +840,7 @@ function renderTray() {
     };
     tray.append(all);
   }
+  $<HTMLButtonElement>('btn-save-received').disabled = !images.length;
   $('drop-text').innerHTML = images.length
     ? `<b>${images.length} image${images.length > 1 ? 's' : ''} loaded.</b> Enter the passphrase below, or add more (a split secret needs all its images).`
     : '<b>Paste an image here</b> (Ctrl/Cmd+V), drop files, or <label class="link" for="file-in">choose some</label>. A split secret needs all its images.';
@@ -1406,6 +1423,7 @@ $('btn-ocr-cancel').onclick = () => {
 };
 $('tab-reveal').addEventListener('click', stopOcrCamera);
 $('tab-keys').addEventListener('click', stopOcrCamera);
+$('tab-saved').addEventListener('click', stopOcrCamera);
 document.addEventListener('visibilitychange', () => document.hidden && stopOcrCamera());
 
 syncModeUi();
@@ -1437,6 +1455,27 @@ if (location.hash === '#reveal' || location.hash.startsWith('#q=')) openFromHash
 window.addEventListener('hashchange', openFromHash);
 
 // Public keys: the keys section, the recipient picker, and links like #to=stpub1:… that fill in a recipient.
+$('btn-save-received').onclick = async () => {
+  const status = $('reveal-status');
+  if (!images.length) return;
+  try {
+    setStatus(status, await saveImages(images.map((i) => i.rgba), 'received'));
+  } catch (e) {
+    setStatus(status, (e as Error).message, true);
+  }
+};
+initVaultUi({
+  restore: (rgbas) => {
+    images = [];
+    resetScan();
+    for (const r of rgbas) images.push({ id: nextId++, rgba: r });
+    renderTray();
+    showTab('reveal');
+    setStatus($('reveal-status'), `Restored ${rgbas.length > 1 ? `${rgbas.length} images` : 'the image'} from Saved secrets. Type the passphrase to reveal it.`);
+    $<HTMLInputElement>('pass2').focus();
+  },
+});
+syncTabLine();
 initKeysUi({ siteBase, showHideTab: () => { setExperience(false); showTab('hide'); }, showKeysTab: () => showTab('keys') });
 void handleToHash(location.hash);
 window.addEventListener('hashchange', () => void handleToHash(location.hash));
@@ -1588,3 +1627,4 @@ $('btn-scan-stop').onclick = () => {
 document.addEventListener('visibilitychange', () => document.hidden && stopScan());
 $('tab-hide').addEventListener('click', stopScan);
 $('tab-keys').addEventListener('click', stopScan);
+$('tab-saved').addEventListener('click', stopScan);
