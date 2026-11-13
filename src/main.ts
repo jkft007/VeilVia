@@ -380,22 +380,28 @@ $('mode').addEventListener('change', syncModeUi);
 // ---- cover photo: chosen from a file, or pasted from the clipboard ---------------
 let pastedCover: Blob | null = null;
 
+let coverHow = 'the pasted image';
 function syncCoverInfo() {
-  $('cover-info').textContent = pastedCover ? 'Using the pasted image as the cover.' : '';
+  $('cover-info').textContent = pastedCover ? `Using ${coverHow} as the cover.` : '';
   $('btn-cover-clear').hidden = !pastedCover;
 }
 
-async function setCover(blob: Blob) {
+async function setCover(blob: Blob, how = 'the pasted image'): Promise<boolean> {
   try {
     await blobToRgba(blob, 64); // make sure it really is a readable image
   } catch {
-    return setStatus($('hide-status'), 'Could not read that image.', true);
+    setStatus($('hide-status'), 'Could not read that image.', true);
+    return false;
   }
   pastedCover = blob;
+  coverHow = how;
   $<HTMLInputElement>('cover-file').value = '';
   syncCoverInfo();
   setStatus($('hide-status'), 'Cover photo pasted.');
+  return true;
 }
+// AI covers need the local dev server, which holds the provider keys from .env; the published site never has them.
+if (import.meta.env.DEV) void import('./aicover').then((m) => m.initAiCover(setCover, (msg, err) => setStatus($('hide-status'), msg, err)));
 
 $('cover-file').addEventListener('change', () => {
   pastedCover = null; // choosing a file replaces a pasted image

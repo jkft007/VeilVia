@@ -1,2 +1,6 @@
 node_modules
 dist
+# API keys for AI cover photos: never commit them
+.env
+.env.*
+!.env.example

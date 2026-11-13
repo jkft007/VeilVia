@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { defineConfig, type Plugin } from 'vite';
+import { aiImagePlugin } from './server/ai-image';
 
 // Production builds ship a strict CSP: no network access at all, no third-party scripts.
 const csp: Plugin = {
@@ -43,6 +44,6 @@ const ocrAssets: Plugin = {
 
 export default defineConfig({
   base: './',
-  plugins: [csp, ocrAssets],
+  plugins: [csp, ocrAssets, aiImagePlugin()],
   test: { environment: 'node', testTimeout: 60000, setupFiles: ['tests/setup.ts'] },
 });

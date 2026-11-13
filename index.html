@@ -152,6 +152,15 @@
             <span id="cover-info" class="hint"></span>
             <button id="btn-cover-clear" class="ghost small" type="button" hidden>Remove</button>
           </div>
+          <div id="ai-cover" hidden>
+            <label for="ai-prompt">Or generate a cover with AI <span class="hint">(local development only: uses the provider keys in your .env)</span></label>
+            <div class="row">
+              <select id="ai-provider" aria-label="AI image provider" hidden></select>
+              <input id="ai-prompt" type="text" maxlength="400" autocomplete="off" placeholder="A sunny harbour with fishing boats and colourful houses" />
+              <button id="btn-ai-cover" class="ghost" type="button">Generate cover with AI</button>
+            </div>
+            <p class="hint"><span id="ai-provider-one"></span> Only this description is sent to the AI provider, through your local dev server; your secret, passphrase and keys never leave the page. Busy, detailed scenes hide the data best.</p>
+          </div>
         </div>
 
         <details class="more" id="sign-options">
